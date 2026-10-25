@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 import sqlite3
 import pandas as pd
 from datetime import datetime, timedelta
@@ -16,6 +17,7 @@ def check_db():
         db_setup.init_db()
         db_setup.seed_db()
         print(" [Setup] Database ready!\n")
+    db_setup.ensure_shipments()
 
 def get_conn():
     return sqlite3.connect(DB_NAME)
@@ -378,6 +380,7 @@ def export_for_power_bi():
         students = pd.read_sql_query("SELECT * FROM students;", conn)
         books = pd.read_sql_query("SELECT * FROM books;", conn)
         transactions = pd.read_sql_query("SELECT * FROM transactions;", conn)
+        shipments = pd.read_sql_query("SELECT * FROM shipments;", conn)
         conn.close()
         
         with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
@@ -385,91 +388,150 @@ def export_for_power_bi():
             students.to_excel(writer, sheet_name='students', index=False)
             books.to_excel(writer, sheet_name='books', index=False)
             transactions.to_excel(writer, sheet_name='transactions', index=False)
+            shipments.to_excel(writer, sheet_name='shipments', index=False)
             
-        print(f" [✓] SUCCESS: Dataset exported to '{excel_path}' with 4 tables:")
-        print("     - departments, students, books, transactions")
+        print(f" [✓] SUCCESS: Dataset exported to '{excel_path}' with 5 tables:")
+        print("     - departments, students, books, transactions, shipments")
         print(" [i] Open POWERBI_GUIDE.md for step-by-step instructions on building the Power BI dashboard.")
     except Exception as e:
         print(f" [!] Error exporting to Excel: {e}")
 
 # ==============================================================================
-# DATA VISUALIZATION DASHBOARD SUBMENU (CLEAN, LOGICAL, DOMAIN-DRIVEN)
+# POWER BI STYLE KPI CARDS (Cards, KPI vs target, Gauge, Slicers, Drill-down) IN THE TERMINAL
 # ==============================================================================
+
+def _text_gauge(pct, width=30):
+    filled = int(round(pct / 100 * width))
+    return "[" + "#" * filled + "-" * (width - filled) + f"] {pct:.1f}%"
+
+def kpi_dashboard():
+    conn = get_conn()
+    depts = pd.read_sql_query("SELECT dept_name FROM departments ORDER BY dept_id;", conn)['dept_name'].tolist()
+    conn.close()
+    
+    # Slicers
+    print("\nSlicer 1 - Department:  0. All")
+    for i, d in enumerate(depts, 1):
+        print(f"                        {i}. {d}")
+    d_choice = input("Select department (0 = All): ").strip()
+    dept = depts[int(d_choice) - 1] if d_choice.isdigit() and 1 <= int(d_choice) <= len(depts) else None
+    y_choice = input("Slicer 2 - Student Year (1-4, 0 = All): ").strip()
+    year = int(y_choice) if y_choice in ('1', '2', '3', '4') else None
+    
+    k = preprocessing.get_library_kpis(dept, year)
+    change = k['issues_this_month'] - k['issues_last_month']
+    arrow = "▲" if change > 0 else ("▼" if change < 0 else "■")
+    
+    print("\n" + "=" * 70)
+    print(f"  LIBRARY KPI DASHBOARD | Dept: {dept or 'All'} | Year: {year or 'All'}")
+    print("=" * 70)
+    print("  CARDS")
+    print(f"    Titles: {k['titles']:<6} Copies: {k['total_copies']:<6} On Loan: {k['on_loan']:<6} Total Loans: {k['total_loans']}")
+    print(f"    Active Loans: {k['active_loans']:<6} Active Overdue: {k['active_overdue']:<6} Total Fines: Rs {k['total_fines']:,.2f}")
+    print("  KPI (this month vs last month target)")
+    print(f"    Issues this month: {k['issues_this_month']}  vs last month: {k['issues_last_month']}  {arrow} {change:+d}")
+    print(f"    Overdue rate: {k['overdue_rate_pct']:.1f}%  (target <= 20%: {'OK' if k['overdue_rate_pct'] <= 20 else 'ABOVE TARGET'})")
+    print("  GAUGE - Library utilisation (copies on loan / total copies)")
+    print(f"    {_text_gauge(k['utilization_pct'])}")
+    print("=" * 70)
+    
+    # Drill-down: department -> books
+    df = preprocessing.get_cleaned_transactions()
+    if year:
+        df = df[df['student_year'] == year]
+    if dept is None:
+        print("\n  DRILL-DOWN LEVEL 1: Loans by Department")
+        for name, n in df.groupby('dept_name').size().sort_values(ascending=False).items():
+            print(f"    {name:<18} {n:>4}  {'█' * (n // 3)}")
+        pick = input("\n  Type a department name to drill down (Enter to skip): ").strip()
+        dept = next((d for d in depts if d.lower() == pick.lower()), None)
+    if dept:
+        print(f"\n  DRILL-DOWN LEVEL 2: Top Books in {dept}")
+        top = df[df['dept_name'] == dept].groupby('book_title').size().sort_values(ascending=False).head(8)
+        for title, n in top.items():
+            print(f"    {title[:45]:<45} {n:>3}  {'█' * n}")
+    print()
+
+# ==============================================================================
+# SELF-STUDY CASE STUDY: SUPPLY CHAIN & LOGISTICS (Route mapping, delivery KPIs, region filter)
+# ==============================================================================
+
+def supply_chain_case_study():
+    regions = ['North', 'West', 'South', 'East']
+    print("\nFilter by Region:  0. All Regions")
+    for i, r in enumerate(regions, 1):
+        print(f"                   {i}. {r}")
+    choice = input("Select region (0-4): ").strip()
+    region = regions[int(choice) - 1] if choice in ('1', '2', '3', '4') else None
+    
+    ship = preprocessing.get_cleaned_shipments(region)
+    if ship.empty:
+        print(" [!] No shipments found for this region.")
+        return
+    delivered = ship[ship['status'].str.startswith('Delivered')]
+    on_time = (delivered['status'] == 'Delivered On-Time').mean() * 100 if len(delivered) else 0.0
+    
+    print("\n" + "=" * 78)
+    print(f"  SUPPLY CHAIN & LOGISTICS - BOOK PROCUREMENT | Region: {region or 'All'}")
+    print("=" * 78)
+    print(f"  Shipments: {len(ship)} | Units: {ship['quantity'].sum()} | Freight: Rs {ship['freight_cost'].sum():,.0f}")
+    print(f"  On-time delivery: {_text_gauge(on_time)} (target 90%)")
+    print(f"  Avg transit days (delivered): {delivered['transit_days'].mean():.1f}")
+    
+    print("\n  DELIVERY STATUS KPIs")
+    for status, n in ship['status'].value_counts().items():
+        print(f"    {status:<20} {n:>4}  ({n / len(ship) * 100:.1f}%)")
+    
+    print("\n  ROUTES (publisher hub -> Pune campus)")
+    print(f"    {'Origin':<12} {'Region':<7} {'Km':>6} {'Shipments':>10} {'Avg Days':>9} {'Late/Delayed':>13}")
+    routes = ship.groupby(['origin_city', 'region']).agg(
+        km=('distance_km', 'first'), n=('shipment_id', 'count'), days=('transit_days', 'mean'),
+        late=('status', lambda s: s.isin(['Delivered Late', 'Delayed In Transit']).sum())
+    ).reset_index().sort_values('n', ascending=False)
+    for _, r in routes.iterrows():
+        print(f"    {r['origin_city']:<12} {r['region']:<7} {r['km']:>6.0f} {r['n']:>10} {r['days']:>9.1f} {r['late']:>13}")
+    print("=" * 78)
+    
+    visualizations.plot_supply_chain_dashboard(region)
+
+# ==============================================================================
+# DATA VISUALIZATION MENU (SYLLABUS UNIT-WISE)
+# ==============================================================================
+
+def print_chart_list():
+    current_unit = None
+    for i, (unit, title, _) in enumerate(visualizations.CHART_MENU, 1):
+        if unit != current_unit:
+            print(f"  --- {unit} ---")
+            current_unit = unit
+        print(f"  {i:>2}. {title}")
+
+def run_chart(number):
+    if 1 <= number <= len(visualizations.CHART_MENU):
+        visualizations.CHART_MENU[number - 1][2]()
+        return True
+    print(f" [!] Invalid chart number. Use 1 to {len(visualizations.CHART_MENU)}.")
+    return False
 
 def visualization_menu():
     while True:
-        print("\n" + "="*68)
-        print("              LIBRARY DATA VISUALIZATION DASHBOARD")
-        print("="*68)
-        print("  1.  Collection by Department (CS, Mech, Civil, AIML, etc.)")
-        print("  2.  Author Distribution & Most Borrowed Authors")
-        print("  3.  Cleveland Dot Plot (High Data-Ink Book Inventory)")
-        print("  4.  Loan Status Breakdown (Grouped & Stacked Bar Charts)")
-        print("  5.  Loan Duration Spread (Histogram, KDE, Violin Plot)")
-        print("  6.  Statistical Diagnostics (ECDF, Normal Q-Q, Log Transform)")
-        print("  7.  Axis Orientation Comparison (Ridgeline vs Boxplots)")
-        print("  8.  Proportions & Treemap (Pie Chart, 100% Stacked, Treemap)")
-        print("  9.  Associations & PCA (Scatter+Regression, Heatmap, PCA 2D)")
-        print(" 10.  Pairplot Matrix across Library Metrics")
-        print(" 11.  Paired Slope Chart (Due Date vs Actual Return Deviation)")
-        print(" 12.  Borrowing Time Series & Trends (Monthly Lines, Smoothing)")
-        print(" 13.  Advanced Time Series (Dose-Response Curve & Decomposition)")
-        print(" 14.  Monthly Borrowing Intensity Heatmap")
-        print(" 15.  Geospatial Demographics: Interactive Indian States Choropleth")
-        print(" 16.  Geospatial Layers: Campus Reading Rooms & Student Origins Map")
-        print(" 17.  Cartogram: Proportional State Symbol Map")
-        print(" 18.  Design Principles Demo: Poor 3D Clutter vs Clean Bar Chart")
-        print(" 19.  Open Interactive Plotly Dashboard in Browser")
-        print(" 20.  ⚡ Generate All Visual Analytics (Batch Render)")
-        print("  0.  ↩ Back to Main Menu")
-        print("="*68)
+        print("\n" + "=" * 72)
+        print("        DATA VISUALIZATION MENU (arranged by syllabus unit)")
+        print("=" * 72)
+        print_chart_list()
+        print("   A. Generate ALL charts (saved to charts/, no windows)")
+        print("   0. Back to Main Menu")
+        print("=" * 72)
         
-        choice = input("Select Visualization Option (0-20): ").strip()
-        
-        if choice == '1':
-            visualizations.plot_department_books()
-        elif choice == '2':
-            visualizations.plot_author_analytics()
-        elif choice == '3':
-            visualizations.plot_cleveland_dot_plot()
-        elif choice == '4':
-            visualizations.plot_loan_status_grouped_stacked()
-        elif choice == '5':
-            visualizations.plot_duration_distributions()
-        elif choice == '6':
-            visualizations.plot_statistical_diagnostics()
-        elif choice == '7':
-            visualizations.plot_vertical_vs_horizontal_layouts()
-        elif choice == '8':
-            visualizations.plot_proportions_and_treemap()
-        elif choice == '9':
-            visualizations.plot_associations_and_pca()
-        elif choice == '10':
-            visualizations.plot_borrowing_pairplot()
-        elif choice == '11':
-            visualizations.plot_paired_slope_chart()
-        elif choice == '12':
-            visualizations.plot_time_series_and_trends()
-        elif choice == '13':
-            visualizations.plot_advanced_time_series()
-        elif choice == '14':
-            visualizations.plot_monthly_activity_heatmap()
-        elif choice == '15':
-            visualizations.plot_geospatial_choropleth()
-        elif choice == '16':
-            visualizations.plot_folium_campus_map()
-        elif choice == '17':
-            visualizations.plot_proportional_cartogram()
-        elif choice == '18':
-            visualizations.plot_design_principles_demo()
-        elif choice == '19':
-            visualizations.plot_interactive_plotly_dashboard()
-        elif choice == '20':
-            visualizations.generate_all_visualizations()
-        elif choice == '0':
+        choice = input(f"Select chart (1-{len(visualizations.CHART_MENU)}, A, 0): ").strip()
+        if choice == '0':
             break
+        elif choice.lower() == 'a':
+            visualizations.generate_all_visualizations()
+        elif choice.isdigit():
+            run_chart(int(choice))
         else:
-            print(" [!] Invalid option. Please enter a number between 0 and 20.")
+            print(" [!] Invalid option.")
 
 # ==============================================================================
 # MAIN APPLICATION MENU
@@ -483,55 +545,67 @@ def main_menu():
         print("   ENGINEERING COLLEGE LIBRARY MANAGEMENT SYSTEM (LMS)")
         print("           DATA VISUALIZATION & ANALYTICS PLATFORM")
         print("="*66)
-        print("  1. 📚 View Library Catalog")
-        print("  2. ➕ Add New Book")
-        print("  3. ➖ Remove / Minus Book (Reduce copies or delete)")
-        print("  4. 🔍 Search Books by Title / Author / Department")
-        print("  5. 👥 View Student Directory")
-        print("  6. ➕ Add New Student")
-        print("  7. 📖 Issue a Book (Auto 14-day due date)")
-        print("  8. 📥 Return a Book (Auto ₹5/day fine calculation)")
-        print("  9. ⚠️ View Overdue Loans")
-        print(" 10. 📜 Student Borrowing History")
-        print(" 11. 📊 Open Data Visualization Dashboard (Interactive Menu)")
-        print(" 12. ⚡ Generate All Visual Analytics (One-Click Render)")
-        print(" 13. 📑 Export Dataset for Power BI (library_export.xlsx)")
-        print("  0. ❌ Exit")
+        print("  1. View Library Catalog")
+        print("  2. Add New Book")
+        print("  3. Remove / Minus Book (Reduce copies or delete)")
+        print("  4. Search Books by Title / Author / Department")
+        print("  5. View Student Directory")
+        print("  6. Add New Student")
+        print("  7. Issue a Book (Auto 14-day due date)")
+        print("  8. Return a Book (Auto Rs 5/day fine calculation)")
+        print("  9. View Overdue Loans")
+        print(" 10. Student Borrowing History")
+        print(" 11. Data Cleaning & Aggregation Report")
+        print(" 12. Data Visualization Menu (Unit 1 - Unit 5)")
+        print(" 13. Generate All Charts (One-Click)")
+        print(" 14. KPI Dashboard (Cards, KPI, Gauge, Slicers, Drill-down)")
+        print(" 15. Supply Chain & Logistics Case Study (Region filter)")
+        print(" 16. Export Dataset for Power BI (library_export.xlsx)")
+        print("  0. Exit")
         print("="*66)
         
-        choice = input("Enter choice (0-13): ").strip()
+        choice = input("Enter choice (0-16): ").strip()
         
-        if choice == '1':
-            view_books()
-        elif choice == '2':
-            add_book()
-        elif choice == '3':
-            remove_book()
-        elif choice == '4':
-            search_books()
-        elif choice == '5':
-            view_students()
-        elif choice == '6':
-            add_student()
-        elif choice == '7':
-            issue_book()
-        elif choice == '8':
-            return_book()
-        elif choice == '9':
-            view_overdue_books()
-        elif choice == '10':
-            student_history()
-        elif choice == '11':
-            visualization_menu()
-        elif choice == '12':
-            visualizations.generate_all_visualizations()
-        elif choice == '13':
-            export_for_power_bi()
-        elif choice == '0':
+        actions = {
+            '1': view_books, '2': add_book, '3': remove_book, '4': search_books,
+            '5': view_students, '6': add_student, '7': issue_book, '8': return_book,
+            '9': view_overdue_books, '10': student_history,
+            '11': preprocessing.print_cleaning_report, '12': visualization_menu,
+            '13': visualizations.generate_all_visualizations, '14': kpi_dashboard,
+            '15': supply_chain_case_study, '16': export_for_power_bi,
+        }
+        if choice == '0':
             print("\n [✓] Thank you for using Engineering College Library Management System. Goodbye!\n")
             sys.exit(0)
+        elif choice in actions:
+            actions[choice]()
         else:
-            print(" [!] Invalid selection. Please enter a valid menu number (0-13).")
+            print(" [!] Invalid selection. Please enter a valid menu number (0-16).")
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Engineering College Library LMS - Data Visualization project (terminal).")
+    parser.add_argument('--all', action='store_true', help="generate every chart into charts/ and exit")
+    parser.add_argument('--list', action='store_true', help="list all chart numbers and exit")
+    parser.add_argument('--chart', type=int, metavar='N', help="open/save chart number N and exit")
+    parser.add_argument('--report', action='store_true', help="print the data cleaning & aggregation report and exit")
+    parser.add_argument('--export', action='store_true', help="export library_export.xlsx for Power BI and exit")
+    parser.add_argument('--reset-db', action='store_true', help="delete and re-create library.db with fresh sample data")
+    return parser.parse_args()
 
 if __name__ == "__main__":
-    main_menu()
+    args = parse_args()
+    if args.reset_db and os.path.exists(DB_NAME):
+        os.remove(DB_NAME)
+    check_db()
+    if args.list:
+        print_chart_list()
+    elif args.chart:
+        run_chart(args.chart)
+    elif args.all:
+        visualizations.generate_all_visualizations()
+    elif args.report:
+        preprocessing.print_cleaning_report()
+    elif args.export:
+        export_for_power_bi()
+    elif not args.reset_db:
+        main_menu()

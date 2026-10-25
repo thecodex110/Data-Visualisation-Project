@@ -226,6 +226,118 @@ def get_state_geospatial_summary(db_path=DB_NAME):
     geo_summary = pd.merge(student_counts, txn_counts, on='home_state', how='left').fillna(0)
     return geo_summary
 
+def get_student_summary(db_path=DB_NAME):
+    """One row per student: loan count, average days kept, overdue loans and total fines."""
+    txns = get_cleaned_transactions(db_path)
+    depts, students, _, _ = load_raw_data(db_path)
+    
+    agg = txns.groupby('student_id').agg(
+        total_loans=('txn_id', 'count'),
+        avg_days_kept=('days_kept', 'mean'),
+        overdue_loans=('overdue_days', lambda x: (x > 0).sum()),
+        total_fines=('effective_fine', 'sum')
+    ).reset_index()
+    
+    summary = pd.merge(students, agg, on='student_id', how='left').fillna(0)
+    summary['primary_dept'] = summary['dept_id'].map(dict(depts[['dept_id', 'dept_name']].values))
+    return summary
+
+def print_cleaning_report(db_path=DB_NAME):
+    """Terminal report of the cleaning + aggregation pipeline (raw -> clean -> aggregated)."""
+    depts, students, books, txns = load_raw_data(db_path)
+    print("\n" + "=" * 70)
+    print("          DATA CLEANING & AGGREGATION REPORT")
+    print("=" * 70)
+    
+    print("\n[1] RAW TABLES (rows x columns)")
+    for name, t in [('departments', depts), ('students', students), ('books', books), ('transactions', txns)]:
+        print(f"    {name:<13}: {t.shape[0]:>4} x {t.shape[1]}")
+    
+    print("\n[2] MISSING VALUES IN RAW transactions")
+    for col, n in txns.isnull().sum().items():
+        if n:
+            print(f"    {col:<13}: {n} nulls  -> meaning: book not returned yet (active loan)")
+    print(f"    duplicate rows: {txns.duplicated().sum()}")
+    
+    clean = get_cleaned_transactions(db_path)
+    print("\n[3] CLEANING STEPS APPLIED")
+    print("    - issue/due/return dates converted from text to datetime")
+    print("    - null return_date kept as active loan (display: 'Active Issue')")
+    print("    - days_kept    = return (or today) - issue, clipped at minimum 1")
+    print("    - overdue_days = return (or today) - due,   clipped at minimum 0")
+    print("    - effective_fine = max(recorded fine, overdue_days x Rs 5)")
+    print("    - status / simple_status labels derived from the two rules above")
+    print(f"    cleaned shape: {clean.shape[0]} x {clean.shape[1]} (joined with books, students, departments)")
+    
+    print("\n[4] AGGREGATION: loans by department x status")
+    print(clean.pivot_table(index='dept_name', columns='simple_status', values='txn_id',
+                            aggfunc='count', fill_value=0).to_string())
+    
+    print("\n[5] AGGREGATION: summary statistics of days_kept and fines")
+    print(clean[['days_kept', 'overdue_days', 'effective_fine']].describe().round(2).to_string())
+    print("=" * 70 + "\n")
+
+def get_library_kpis(dept_name=None, year=None, db_path=DB_NAME):
+    """Power BI style headline measures, optionally sliced by department and student year."""
+    txns = get_cleaned_transactions(db_path)
+    depts, _, books, _ = load_raw_data(db_path)
+    books = pd.merge(books, depts, on='dept_id')
+    if dept_name:
+        txns = txns[txns['dept_name'] == dept_name]
+        books = books[books['dept_name'] == dept_name]
+    if year:
+        txns = txns[txns['student_year'] == year]
+    
+    this_month = pd.Timestamp(datetime.now().date()).to_period('M')
+    month_counts = txns['issue_date_dt'].dt.to_period('M').value_counts()
+    total_copies = int(books['total_copies'].sum())
+    on_loan = total_copies - int(books['available_copies'].sum())
+    active = txns[txns['return_date_dt'].isnull()]
+    
+    return {
+        'titles': int(len(books)),
+        'total_copies': total_copies,
+        'on_loan': on_loan,
+        'utilization_pct': (on_loan / total_copies * 100) if total_copies else 0.0,
+        'total_loans': int(len(txns)),
+        'active_loans': int(len(active)),
+        'active_overdue': int((active['overdue_days'] > 0).sum()),
+        'overdue_rate_pct': float((txns['overdue_days'] > 0).mean() * 100) if len(txns) else 0.0,
+        'total_fines': float(txns['effective_fine'].sum()),
+        'issues_this_month': int(month_counts.get(this_month, 0)),
+        'issues_last_month': int(month_counts.get(this_month - 1, 0)),
+    }
+
+def get_cleaned_shipments(region=None, db_path=DB_NAME):
+    """Cleans shipment logs: transit time, delay and delivery status (Supply Chain case study)."""
+    conn = get_connection(db_path)
+    df = pd.read_sql_query("""
+        SELECT sh.*, b.title AS book_title, d.dept_name
+        FROM shipments sh
+        JOIN books b ON sh.book_id = b.book_id
+        JOIN departments d ON b.dept_id = d.dept_id;
+    """, conn)
+    conn.close()
+    
+    today = pd.Timestamp(datetime.now().date())
+    df['dispatch_dt'] = pd.to_datetime(df['dispatch_date'])
+    df['expected_dt'] = pd.to_datetime(df['expected_date'])
+    df['delivery_dt'] = pd.to_datetime(df['delivery_date'])
+    delivered = df['delivery_dt'].notnull()
+    end = df['delivery_dt'].fillna(today)
+    
+    df['transit_days'] = (end - df['dispatch_dt']).dt.days
+    df['delay_days'] = (end - df['expected_dt']).dt.days.clip(lower=0)
+    df['status'] = np.select(
+        [delivered & (df['delay_days'] == 0), delivered, ~delivered & (df['delay_days'] > 0)],
+        ['Delivered On-Time', 'Delivered Late', 'Delayed In Transit'],
+        default='In Transit'
+    )
+    df['dispatch_month'] = df['dispatch_dt'].dt.to_period('M').astype(str)
+    if region:
+        df = df[df['region'] == region]
+    return df
+
 if __name__ == "__main__":
     print("Testing Preprocessing Module...")
     df = get_cleaned_transactions()

@@ -31,23 +31,24 @@ Power BI ecosystem consists of three main components:
 ## 2. Data Export & Loading Options
 
 ### Option A: Loading via Excel Export (Primary Connection)
-1. Run CLI Option `11` in `main.py`: **"Export Data for Power BI"**.
-2. This generates `library_export.xlsx` containing four separate worksheets:
+1. Run main menu option `16` in `main.py` (**"Export Dataset for Power BI"**) or `python3 main.py --export`.
+2. This generates `library_export.xlsx` containing five separate worksheets:
    - `departments`
    - `students`
    - `books`
    - `transactions`
+   - `shipments` (case study)
 3. In **Power BI Desktop**:
    - Click **Get Data** -> **Excel Workbook**.
    - Select `library_export.xlsx`.
-   - Check all four tables in the Navigator dialog and click **Transform Data**.
+   - Check all five tables in the Navigator dialog and click **Transform Data**.
 
 ### Option B: Direct Database Connection (SQLite via ODBC)
 1. Install **SQLite ODBC Driver** (32-bit or 64-bit matching Power BI Desktop).
 2. In Power BI Desktop:
    - Click **Get Data** -> **ODBC**.
    - Connection String: `DRIVER=SQLite3 ODBC Driver;Database=C:\path\to\library.db;`
-   - Select tables: `departments`, `students`, `books`, `transactions`.
+   - Select tables: `departments`, `students`, `books`, `transactions`, `shipments`.
 
 ### Option C: Web API Endpoint (Cloud Native Integration)
 If hosting LMS backend on Python FastAPI / Flask:
@@ -85,6 +86,7 @@ In Power BI **Model View**, configure star schema relationships:
 - `departments[dept_id]` 1 : * `books[dept_id]` (Single direction)
 - `books[book_id]` 1 : * `transactions[book_id]` (Single direction)
 - `students[student_id]` 1 : * `transactions[student_id]` (Single direction)
+- `books[book_id]` 1 : * `shipments[book_id]` (Single direction)
 
 ---
 
@@ -149,11 +151,33 @@ To ensure Department Heads (e.g. Computer Science HOD) can only view borrowing s
 ### Power BI Embedded (College Portal Integration)
 To embed this dashboard directly into the college intranet portal (e.g. `portal.college.edu/library`):
 1. In Power BI Service: Go to **File** -> **Embed Report** -> **Website or Portal** (or **Power BI Embedded** for custom React/Vue applications).
-2. Copy iframe string:
-   ```html
-   <iframe width="1140" height="541.25" src="https://app.powerbi.com/reportEmbed?reportId=YOUR_REPORT_ID&autoAuth=true" frameborder="0" allowFullScreen="true"></iframe>
-   ```
+2. Power BI generates an embed link/code for the report, which the portal team pastes into their page (this project itself has no web frontend).
 3. Users authenticate via Microsoft Entra ID (Azure AD) single sign-on (SSO).
+
+---
+
+## 7. Case Study: Supply Chain & Logistics Dashboard (Self-study)
+
+Use the `shipments` sheet to rebuild the Python case-study dashboard (main menu option 15) in Power BI.
+
+1. **Power Query** - add custom columns:
+   ```powerquery
+   Transit_Days = Duration.Days(if [delivery_date] = null then DateTime.Date(DateTime.LocalNow()) else [delivery_date] - [dispatch_date])
+   Is_On_Time   = if [delivery_date] <> null and [delivery_date] <= [expected_date] then 1 else 0
+   ```
+2. **DAX measures**:
+   ```dax
+   Total Shipments = COUNTROWS(shipments)
+   On-Time % = DIVIDE(SUM(shipments[Is_On_Time]), CALCULATE(COUNTROWS(shipments), NOT ISBLANK(shipments[delivery_date])), 0)
+   In Transit = CALCULATE(COUNTROWS(shipments), ISBLANK(shipments[delivery_date]))
+   Avg Transit Days = AVERAGE(shipments[Transit_Days])
+   ```
+3. **Visuals**:
+   - Cards: Total Shipments, In Transit, Avg Transit Days
+   - Gauge: On-Time % (target 90%)
+   - Route mapping: **Map** visual with `origin_city` as location, bubble size = Total Shipments (campus = Pune)
+   - Stacked bar: status by `region`
+   - **Slicer on `region`** (North / West / South / East) for filtering by region
 
 ---
 *Guide generated for Engineering College Library Management System (DV Mini Project).*

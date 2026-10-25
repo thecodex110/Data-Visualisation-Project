@@ -1,9 +1,22 @@
 import sqlite3
 import random
+import math
 from datetime import datetime, timedelta
 from faker import Faker
 
 DB_NAME = "library.db"
+
+# Publisher dispatch hubs (one city per publisher state) and the campus (Pune) delivery point
+PUBLISHER_HUBS = {
+    "Maharashtra": ("Mumbai", "West", 19.0760, 72.8777),
+    "Gujarat": ("Ahmedabad", "West", 23.0225, 72.5714),
+    "Delhi": ("New Delhi", "North", 28.6139, 77.2090),
+    "Karnataka": ("Bengaluru", "South", 12.9716, 77.5946),
+    "Tamil Nadu": ("Chennai", "South", 13.0827, 80.2707),
+    "West Bengal": ("Kolkata", "East", 22.5726, 88.3639),
+}
+CAMPUS_LOCATION = ("Pune Campus", 18.5204, 73.8567)
+COURIERS = ["BlueDart", "Delhivery", "DTDC", "India Post"]
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
@@ -13,6 +26,7 @@ def init_db():
     cursor.execute("PRAGMA foreign_keys = ON;")
     
     # Drop existing tables to ensure clean seed
+    cursor.execute("DROP TABLE IF EXISTS shipments;")
     cursor.execute("DROP TABLE IF EXISTS transactions;")
     cursor.execute("DROP TABLE IF EXISTS books;")
     cursor.execute("DROP TABLE IF EXISTS students;")
@@ -64,7 +78,86 @@ def init_db():
     );
     """)
     
+    create_shipments_table(cursor)
     conn.commit()
+    conn.close()
+
+def create_shipments_table(cursor):
+    """Shipment & delivery log for book procurement (Supply Chain & Logistics case study)."""
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS shipments (
+        shipment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        book_id INTEGER NOT NULL,
+        quantity INTEGER NOT NULL,
+        origin_city TEXT NOT NULL,
+        origin_state TEXT NOT NULL,
+        region TEXT NOT NULL,
+        courier TEXT NOT NULL,
+        distance_km REAL NOT NULL,
+        freight_cost REAL NOT NULL,
+        dispatch_date TEXT NOT NULL,
+        expected_date TEXT NOT NULL,
+        delivery_date TEXT,
+        FOREIGN KEY (book_id) REFERENCES books(book_id)
+    );
+    """)
+
+def haversine_km(lat1, lon1, lat2, lon2):
+    """Great-circle distance between two lat/lon points in kilometres."""
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+def seed_shipments(conn, n_shipments=160):
+    """Seeds publisher -> campus shipment logs over the past year."""
+    rng = random.Random(7)
+    cursor = conn.cursor()
+    cursor.execute("SELECT book_id, publisher_state FROM books;")
+    books = [r for r in cursor.fetchall() if r[1] in PUBLISHER_HUBS]
+    if not books:
+        return
+    
+    _, campus_lat, campus_lon = CAMPUS_LOCATION
+    today = datetime.now()
+    rows = []
+    for _ in range(n_shipments):
+        book_id, state = rng.choice(books)
+        city, region, lat, lon = PUBLISHER_HUBS[state]
+        distance = haversine_km(lat, lon, campus_lat, campus_lon)
+        courier = rng.choice(COURIERS)
+        quantity = rng.randint(2, 12)
+        freight = round(40 + distance * 0.12 * quantity / 4, 2)
+        
+        dispatch_dt = today - timedelta(days=rng.randint(1, 365))
+        expected_days = math.ceil(distance / 450) + 1
+        expected_dt = dispatch_dt + timedelta(days=expected_days)
+        
+        # Delay profile: India Post is slower, longer routes slip more often
+        delay_p = 0.15 + (0.15 if courier == "India Post" else 0) + distance / 10000
+        delay = rng.randint(1, 6) if rng.random() < delay_p else -rng.randint(0, 1)
+        delivery_dt = dispatch_dt + timedelta(days=max(1, expected_days + delay))
+        delivery_str = delivery_dt.strftime("%Y-%m-%d") if delivery_dt <= today else None
+        
+        rows.append((book_id, quantity, city, state, region, courier, round(distance, 1), freight,
+                     dispatch_dt.strftime("%Y-%m-%d"), expected_dt.strftime("%Y-%m-%d"), delivery_str))
+    
+    cursor.executemany("""
+    INSERT INTO shipments (book_id, quantity, origin_city, origin_state, region, courier, distance_km,
+                           freight_cost, dispatch_date, expected_date, delivery_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    """, rows)
+    conn.commit()
+
+def ensure_shipments(db_path=DB_NAME):
+    """Adds the shipments table to an existing library.db without touching library data."""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='shipments';")
+    if cursor.fetchone() is None:
+        create_shipments_table(cursor)
+        seed_shipments(conn)
     conn.close()
 
 def seed_db():
@@ -271,6 +364,7 @@ def seed_db():
         cursor.execute("UPDATE books SET available_copies = MAX(0, total_copies - ?) WHERE book_id = ?;", (active_cnt, b_id))
         
     conn.commit()
+    seed_shipments(conn)
     conn.close()
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ A terminal-only (CLI) Python project for an engineering college library with six
 No web frontend: charts are saved as PNGs in `charts/` and open in a matplotlib window from the menu.
 
 👉 **Full explanation in Hinglish (what is in the project, how it runs, the meaning of every command and menu option, the syllabus mapping and viva Q&A): [`PROJECT_GUIDE.md`](PROJECT_GUIDE.md)**
+👉 Every main-menu option and where its code lives: [`MENU_OPTIONS_EXPLAINED.txt`](MENU_OPTIONS_EXPLAINED.txt)
 👉 Power BI steps: [`POWERBI_GUIDE.md`](POWERBI_GUIDE.md)
 
 ---
@@ -13,8 +14,8 @@ No web frontend: charts are saved as PNGs in `charts/` and open in a matplotlib 
 ## Quick Start
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
+python3 -m venv ~/.venvs/dv-lms     # venv outside the project folder (see PROJECT_GUIDE.md §0)
+source ~/.venvs/dv-lms/bin/activate
 pip install -r requirements.txt
 python3 main.py                   # opens the main menu
 ```

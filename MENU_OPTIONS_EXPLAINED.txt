@@ -1,0 +1,469 @@
+=====================================================================================
+  MAIN MENU KE SAARE OPTIONS (0 se 16) - KYA HOTA HAI + CODE KAHAN LIKHA HAI
+  Engineering College Library LMS - Data Visualization Project
+=====================================================================================
+
+Is file me main menu ka har option explain kiya gaya hai:
+  - KYA KARTA HAI    : option chunne par screen pe kya hota hai
+  - KAISE KAAM KARTA : andar code step-by-step kya karta hai
+  - CODE KAHAN HAI   : kaunsi file, kaunsa function, kis line se shuru
+  - SYLLABUS         : kis unit/topic ko cover karta hai (jahan lagu ho)
+
+(Line numbers is version ke hain. Code badloge to thode upar-neeche ho sakte hain;
+ function ka naam hamesha same rahega - editor me Cmd+F se naam search kar lena.)
+
+
+-------------------------------------------------------------------------------------
+PEHLE SAMJHO: 4 FILES AUR UNKA KAAM
+-------------------------------------------------------------------------------------
+  main.py            -> Menu, saare library operations (add/issue/return...), KPI
+                        dashboard, supply chain, Excel export, command-line flags.
+  db_setup.py        -> Database (library.db) ke tables banata hai aur sample data
+                        bharta hai.
+  preprocessing.py   -> Database se data padhta hai, saaf (clean) karta hai, aur
+                        group/sum (aggregate) karta hai.
+  visualizations.py  -> Saare 26 charts banata hai aur charts/ folder me save karta hai.
+
+  Database file: library.db (5 tables: departments, students, books, transactions,
+  shipments)
+
+
+-------------------------------------------------------------------------------------
+MENU KHUD KAISE CHALTA HAI (program start se menu tak)
+-------------------------------------------------------------------------------------
+  Command:  python3 main.py
+
+  1. main.py ka bottom block chalta hai
+       -> main.py, line 595:  if __name__ == "__main__":
+  2. parse_args() dekhta hai ki --all / --chart jaisa koi flag diya hai ya nahi
+       -> main.py, line 585:  def parse_args()
+  3. check_db(): library.db nahi hai to bana deta hai; shipments table nahi hai to
+     wo add kar deta hai
+       -> main.py, line 14:   def check_db()
+       -> db_setup.py, line 21:  def init_db()           (tables banata hai)
+       -> db_setup.py, line 163: def seed_db()           (sample data bharta hai)
+       -> db_setup.py, line 153: def ensure_shipments()  (shipments table add karta hai)
+  4. main_menu() ek "while True" loop chalata hai:
+       menu print karo -> input() se number lo -> "actions" dictionary me us number
+       ka function dhundo -> use call karo -> phir se menu dikhao
+       -> main.py, line 540:  def main_menu()
+  5. Database connection har function me get_conn() se khulta hai
+       -> main.py, line 22:   def get_conn()
+
+
+=====================================================================================
+OPTION 1. View Library Catalog
+=====================================================================================
+KYA KARTA HAI:
+  Library ki saari books ek table me dikhata hai: ID, Title, Author, Department,
+  Avail/Total copies (jaise 7/9 = 9 me se 7 shelf pe hain), Publisher State.
+
+KAISE KAAM KARTA HAI:
+  1. SQL query: books table ko departments table se JOIN karta hai (dept_id se),
+     taaki department ka naam mil sake.
+  2. Department aur title ke hisaab se sort (ORDER BY).
+  3. Har row ko f-string formatting se columns me print karta hai.
+
+CODE KAHAN HAI:
+  main.py, line 29:  def view_books()
+
+
+=====================================================================================
+OPTION 2. Add New Book
+=====================================================================================
+KYA KARTA HAI:
+  Nayi book library me add karta hai. Ye poochta hai: Title, Author, Department,
+  Total Copies, Publisher State.
+
+KAISE KAAM KARTA HAI:
+  1. Title/Author khaali ho to mana kar deta hai.
+  2. departments table se list dikhata hai, aap department ID chunte ho.
+  3. Copies 1 se kam ho to error.
+  4. Publisher state khaali chhodo to default "Maharashtra".
+  5. INSERT INTO books (...) -> total_copies = available_copies (sab shelf pe).
+  6. conn.commit() se database me pakka save.
+
+CODE KAHAN HAI:
+  main.py, line 51:  def add_book()
+
+
+=====================================================================================
+OPTION 3. Remove / Minus Book (Reduce copies or delete)
+=====================================================================================
+KYA KARTA HAI:
+  Book ki copies kam karta hai, ya book ko poori tarah delete karta hai.
+
+KAISE KAAM KARTA HAI:
+  1. Book ID lo -> book ki details dikhao: total, shelf pe kitni, kitni loan pe hain
+     (loan pe = total - available).
+  2. Choice 1 (copies kam karo): sirf utni copies kam ho sakti hain jitni shelf pe
+     hain (loan wali copy kam nahi ho sakti). UPDATE books SET total, available.
+  3. Choice 2 (poori delete): agar koi copy student ke paas hai to mana kar deta hai.
+     Nahi to "y/n" confirm karke pehle us book ke transactions delete, phir book
+     delete.
+
+CODE KAHAN HAI:
+  main.py, line 91:  def remove_book()
+
+
+=====================================================================================
+OPTION 4. Search Books by Title / Author / Department
+=====================================================================================
+KYA KARTA HAI:
+  Ek keyword (jaise "machine" ya "Cormen" ya "Civil") daalo, matching books dikhengi.
+
+KAISE KAAM KARTA HAI:
+  SQL ka LIKE '%keyword%' use karta hai, title, author aur department naam teeno me
+  dhundta hai. Keyword "?" placeholder se pass hota hai (SQL injection se safe).
+
+CODE KAHAN HAI:
+  main.py, line 151:  def search_books()
+
+
+=====================================================================================
+OPTION 5. View Student Directory
+=====================================================================================
+KYA KARTA HAI:
+  Saare students ki list: ID, Naam, Department, Year (1-4), Home State.
+
+KAISE KAAM KARTA HAI:
+  students table ko departments ke saath JOIN karke student_id ke order me print.
+
+CODE KAHAN HAI:
+  main.py, line 174:  def view_students()
+
+
+=====================================================================================
+OPTION 6. Add New Student
+=====================================================================================
+KYA KARTA HAI:
+  Naya student register karta hai: Naam, Department, Year, Home State.
+
+KAISE KAAM KARTA HAI:
+  Input lekar INSERT INTO students (...). Home state khaali ho to "Maharashtra".
+  Naya student_id database khud deta hai (AUTOINCREMENT).
+
+CODE KAHAN HAI:
+  main.py, line 195:  def add_student()
+
+
+=====================================================================================
+OPTION 7. Issue a Book (Auto 14-day due date)
+=====================================================================================
+KYA KARTA HAI:
+  Kisi student ko book deta hai. Due date apne-aap aaj + 14 din set hoti hai.
+
+KAISE KAAM KARTA HAI:
+  1. Student ID aur Book ID lo.
+  2. Check: student exist karta hai? book exist karti hai? shelf pe copy hai
+     (available_copies > 0)? Koi bhi "nahi" -> error message, kuch save nahi.
+  3. issue_date = aaj, due_date = aaj + timedelta(days=14).
+  4. INSERT INTO transactions (return_date = NULL, fine = 0)
+     -> return_date NULL ka matlab "book abhi student ke paas hai".
+  5. UPDATE books SET available_copies = available_copies - 1
+  6. commit -> "Issued ... Due Date: YYYY-MM-DD" print.
+
+CODE KAHAN HAI:
+  main.py, line 229:  def issue_book()
+
+
+=====================================================================================
+OPTION 8. Return a Book (Auto Rs 5/day fine calculation)
+=====================================================================================
+KYA KARTA HAI:
+  Book wapas leta hai aur late ho to fine calculate karta hai (Rs 5 per din).
+
+KAISE KAAM KARTA HAI:
+  1. Transaction ID lo (Option 9 ya 10 se dekh sakte ho).
+  2. Transaction + book + student JOIN karke details laao.
+  3. return_date pehle se bhari hai -> "already returned" message.
+  4. overdue_days = max(0, aaj - due_date)
+     fine = overdue_days x 5
+  5. UPDATE transactions SET return_date = aaj, fine_amount = fine
+     UPDATE books SET available_copies = available_copies + 1
+  6. Fine > 0 -> "OVERDUE NOTICE ... Fine Due" warna "Returned on-time".
+
+CODE KAHAN HAI:
+  main.py, line 279:  def return_book()
+
+
+=====================================================================================
+OPTION 9. View Overdue Loans
+=====================================================================================
+KYA KARTA HAI:
+  Wo saare loans dikhata hai jo due date ke baad return hue ya abhi tak return nahi
+  hue: Txn ID, Student, Book, Due Date, Days Late, Fine.
+
+KAISE KAAM KARTA HAI:
+  1. preprocessing ka cleaned data lata hai (jisme overdue_days, effective_fine,
+     status pehle se calculated hain).
+  2. status me "Overdue" wali rows filter karke print.
+
+CODE KAHAN HAI:
+  main.py, line 333:          def view_overdue_books()
+  preprocessing.py, line 23:  def get_cleaned_transactions()   (status/fine calculation)
+
+
+=====================================================================================
+OPTION 10. Student Borrowing History
+=====================================================================================
+KYA KARTA HAI:
+  Ek student ki saari borrowing history: kaunsi book, kab issue, due, return, fine.
+
+KAISE KAAM KARTA HAI:
+  Cleaned transactions me se student_id == aapka ID wali rows filter karke print.
+  Book return nahi hui ho to Return Date ki jagah "Active Issue" dikhta hai.
+
+CODE KAHAN HAI:
+  main.py, line 350:          def student_history()
+  preprocessing.py, line 23:  def get_cleaned_transactions()
+
+
+=====================================================================================
+OPTION 11. Data Cleaning & Aggregation Report          [SYLLABUS: Unit 2]
+=====================================================================================
+KYA KARTA HAI:
+  Terminal me ek report print karta hai jo dikhata hai ki raw data ko kaise saaf aur
+  summarize kiya gaya. Isme 5 parts hain:
+    [1] Raw tables ka size (rows x columns)
+    [2] Missing values (return_date ke NULL = active loans) aur duplicate rows
+    [3] Cleaning steps (dates convert, days_kept, overdue_days, fine, status)
+    [4] Aggregation: department x status pivot table
+    [5] Summary statistics (mean, std, min, max...) of days_kept, overdue, fine
+
+KAISE KAAM KARTA HAI:
+  load_raw_data() se 4 tables -> isnull().sum() se missing values ->
+  get_cleaned_transactions() se clean table -> pivot_table() aur describe().
+
+  Cleaning rules (get_cleaned_transactions ke andar):
+    days_kept      = return date (ya aaj) - issue date, minimum 1
+    overdue_days   = return date (ya aaj) - due date,   minimum 0
+    effective_fine = max(recorded fine, overdue_days x 5)
+    status         = Active Overdue / Active On-Time / Returned Overdue / Returned On-Time
+
+CODE KAHAN HAI:
+  preprocessing.py, line 245:  def print_cleaning_report()
+  preprocessing.py, line 11:   def load_raw_data()
+  preprocessing.py, line 23:   def get_cleaned_transactions()
+  Shortcut command: python3 main.py --report
+
+
+=====================================================================================
+OPTION 12. Data Visualization Menu (Unit 1 - Unit 5)    [SYLLABUS: Unit 1-5 + Case Study]
+=====================================================================================
+KYA KARTA HAI:
+  Ek submenu kholta hai jisme 26 charts unit-wise listed hain. Number daalo ->
+  chart banta hai, charts/ folder me PNG save hota hai, aur ek window me khulta hai
+  (zoom/pan/save buttons ke saath). Window band karo -> submenu wapas.
+  "A" = saare charts ek saath, "0" = main menu pe wapas.
+
+KAISE KAAM KARTA HAI:
+  1. print_chart_list() visualizations.py ki CHART_MENU list padh ke unit headings
+     ke saath numbered list print karta hai.
+  2. run_chart(N) -> CHART_MENU[N-1] ka function call karta hai.
+  3. Har chart function: preprocessing se data -> matplotlib/seaborn se plot ->
+     save_chart() -> PNG save + window show + memory clear.
+
+CODE KAHAN HAI:
+  main.py, line 516:            def visualization_menu()
+  main.py, line 501:            def print_chart_list()
+  main.py, line 509:            def run_chart(number)
+  visualizations.py, line 1066: CHART_MENU = [...]   (number -> chart function list)
+  visualizations.py, line 51:   def save_chart()     (save + show helper)
+
+  26 CHARTS - FUNCTION AUR LINE (sab visualizations.py me):
+  ---------------------------------------------------------------------------------
+   #  Unit     Chart                                        Function (line)
+  ---------------------------------------------------------------------------------
+   1  Unit 1   Design Principles (bad 3D vs clean bar)      plot_design_principles_demo (111)
+   2  Unit 1   Categorical / Time Series / Statistical      plot_data_graphic_types (146)
+   3  Unit 2   Pairplot                                     plot_borrowing_pairplot (183)
+   4  Unit 2   Heatmap (dept x month)                       plot_monthly_activity_heatmap (193)
+   5  Unit 2   Interactive Explorer (hover/filter/slider)   plot_interactive_explorer (205)
+   6  Unit 2   Graphical Perception                         plot_graphical_perception (267)
+   7  Unit 2   Grammar of Graphics + Scales                 plot_grammar_of_graphics (315)
+   8  Unit 3   Bar Plot: books by department                plot_department_books (377)
+   9  Unit 3   Horizontal Bar: top authors                  plot_author_analytics (399)
+  10  Unit 3   Cleveland Dot Plot                           plot_cleveland_dot_plot (420)
+  11  Unit 3   Grouped & Stacked Bars                       plot_loan_status_grouped_stacked (439)
+  12  Unit 3   Histogram+KDE, Overlaid KDE, Violin          plot_duration_distributions (465)
+  13  Unit 3   ECDF, Q-Q, Skewed & Log                      plot_statistical_diagnostics (494)
+  14  Unit 4   Box/Strip (vertical) vs Ridgeline            plot_vertical_vs_horizontal_layouts (532)
+  15  Unit 4   Pie / Side-by-side / Stacked / Densities     plot_proportions (564)
+  16  Unit 4   Parts of the Total                           plot_parts_of_total (609)
+  17  Unit 4   Treemap + Nested Donut                       plot_nested_proportions (631)
+  18  Unit 4   Scatter, Correlogram, PCA                    plot_associations_and_pca (661)
+  19  Unit 4   Paired Slope Chart                           plot_paired_slope_chart (699)
+  20  Unit 5   Time Series, Smoothing, Functional Form      plot_time_series_and_trends (725)
+  21  Unit 5   Dose-Response, Multi-Resp, Detrend, Decomp   plot_advanced_time_series (769)
+  22  Unit 5   Map Projections                              plot_map_projections (836)
+  23  Unit 5   Map Layers                                   plot_map_layers (867)
+  24  Unit 5   Choropleth (tile map)                        plot_choropleth_map (918)
+  25  Unit 5   Cartograms                                   plot_proportional_cartogram (933)
+  26  Case St. Supply Chain Dashboard                       plot_supply_chain_dashboard (981)
+  ---------------------------------------------------------------------------------
+
+  In charts ka data kahan se aata hai (preprocessing.py):
+    get_department_aggregates (113)   -> dept-wise copies & status counts
+    get_author_aggregates (138)       -> author-wise loans
+    get_monthly_matrix (156)          -> dept x month table (heatmap)
+    get_monthly_timeseries (170)      -> monthly issues/returns/fines (time series)
+    get_student_feature_matrix (189)  -> student x dept counts (PCA)
+    get_state_geospatial_summary (212)-> state-wise students & loans (maps)
+    get_student_summary (229)         -> per-student loans/fines (scatter, pairplot)
+    get_cleaned_shipments (311)       -> shipments with status (case study)
+
+  Shortcut commands:
+    python3 main.py --list       (list)
+    python3 main.py --chart 5    (sirf chart 5)
+
+
+=====================================================================================
+OPTION 13. Generate All Charts (One-Click)
+=====================================================================================
+KYA KARTA HAI:
+  Saare 26 charts ek saath bana ke charts/ folder me save karta hai. Koi window nahi
+  khulti, isliye fast hai (~20-30 second).
+
+KAISE KAAM KARTA HAI:
+  1. set_show_windows(False) -> windows band.
+  2. CHART_MENU ke har function ko loop me call.
+  3. End me windows ki setting wapas pehle jaisi.
+
+CODE KAHAN HAI:
+  visualizations.py, line 1095: def generate_all_visualizations()
+  visualizations.py, line 34:   def set_show_windows(flag)
+  Shortcut command: python3 main.py --all
+
+
+=====================================================================================
+OPTION 14. KPI Dashboard (Cards, KPI, Gauge, Slicers, Drill-down)   [SYLLABUS: Unit 6 Power BI]
+=====================================================================================
+KYA KARTA HAI:
+  Power BI dashboard ke concepts terminal me dikhata hai:
+    SLICER     -> pehle department (0 = All) aur student year (0 = All) chuno.
+    CARDS      -> Titles, Copies, On Loan, Total Loans, Active Loans, Active Overdue,
+                  Total Fines.
+    KPI        -> Is mahine ke issues vs pichle mahine (badha to ▲, ghata to ▼),
+                  Overdue rate vs target 20%.
+    GAUGE      -> Library utilisation % (loan pe copies / total copies) ek text bar
+                  me: [####----------] 8.2%
+    DRILL-DOWN -> Level 1: dept-wise loans (█ bars). Department ka naam type karo ->
+                  Level 2: us department ki top books.
+
+KAISE KAAM KARTA HAI:
+  1. Slicer inputs -> get_library_kpis(dept, year) filter lagake saare numbers
+     calculate karta hai (current month = aaj ka mahina).
+  2. _text_gauge() percentage ko # aur - wali bar me badalta hai.
+  3. Drill-down groupby('dept_name') aur groupby('book_title') se.
+
+CODE KAHAN HAI:
+  main.py, line 407:           def kpi_dashboard()
+  main.py, line 403:           def _text_gauge()
+  preprocessing.py, line 280:  def get_library_kpis()
+  Power BI me yahi cheez kaise banayein: POWERBI_GUIDE.md (Section 4 & 5)
+
+
+=====================================================================================
+OPTION 15. Supply Chain & Logistics Case Study (Region filter)   [SYLLABUS: Self-study Case Study]
+=====================================================================================
+KYA KARTA HAI:
+  Publishers (Mumbai, Ahmedabad, New Delhi, Bengaluru, Chennai, Kolkata) se Pune
+  campus tak aane wali book shipments ka analysis.
+    1. Region chuno: 0 All, 1 North, 2 West, 3 South, 4 East  (= filtering by region)
+    2. Terminal me: total shipments, units, freight cost, on-time delivery gauge,
+       average transit days.
+    3. DELIVERY STATUS KPIs: Delivered On-Time / Delivered Late / In Transit /
+       Delayed In Transit (count aur %).
+    4. ROUTES table: har origin city -> km, shipments, avg days, late count
+       (= route mapping, table form me).
+    5. Dashboard image banta hai: charts/supply_chain_dashboard_<region>.png
+       (KPI cards, gauge, route map arrows, status by region, monthly on-time trend,
+        courier delay) aur window me khulta hai.
+
+KAISE KAAM KARTA HAI:
+  1. get_cleaned_shipments(region): shipments + books JOIN,
+       transit_days = delivery (ya aaj) - dispatch
+       delay_days   = delivery (ya aaj) - expected, minimum 0
+       status       = upar ke 4 me se ek
+     phir region filter.
+  2. groupby('origin_city') se routes table.
+  3. plot_supply_chain_dashboard(region) gridspec se 3-row dashboard banata hai.
+
+  Shipment data kahan se aaya:
+    db_setup.seed_shipments() 160 shipments banata hai. Distance haversine_km() se
+    (latitude/longitude se asli doori). Expected days = distance/450 + 1.
+    India Post aur lambi doori pe delay ka chance zyada rakha gaya hai.
+
+CODE KAHAN HAI:
+  main.py, line 459:            def supply_chain_case_study()
+  preprocessing.py, line 311:   def get_cleaned_shipments()
+  visualizations.py, line 981:  def plot_supply_chain_dashboard()
+  visualizations.py, line 960:  def _kpi_card()   (card box)
+  visualizations.py, line 966:  def _gauge()      (semicircle gauge)
+  db_setup.py, line 85:         def create_shipments_table()
+  db_setup.py, line 113:        def seed_shipments()
+  db_setup.py, line 105:        def haversine_km()
+  db_setup.py, line 10-20:      PUBLISHER_HUBS, CAMPUS_LOCATION, COURIERS (city list)
+
+
+=====================================================================================
+OPTION 16. Export Dataset for Power BI (library_export.xlsx)   [SYLLABUS: Unit 6 Power BI]
+=====================================================================================
+KYA KARTA HAI:
+  Database ke 5 tables ko ek Excel file library_export.xlsx me 5 alag sheets me
+  likhta hai: departments, students, books, transactions, shipments.
+  Ye file Power BI Desktop me "Get Data -> Excel Workbook" se load hoti hai.
+
+KAISE KAAM KARTA HAI:
+  Har table ko pd.read_sql_query() se DataFrame banao -> pd.ExcelWriter
+  (engine = openpyxl) -> har DataFrame ko to_excel(sheet_name=...) se alag sheet.
+
+CODE KAHAN HAI:
+  main.py, line 370:  def export_for_power_bi()
+  Shortcut command: python3 main.py --export
+  Power BI steps: POWERBI_GUIDE.md
+
+
+=====================================================================================
+OPTION 0. Exit
+=====================================================================================
+KYA KARTA HAI:
+  "Thank you ... Goodbye!" print karke program band (sys.exit(0)).
+  Sab data pehle hi har operation ke baad library.db me save (commit) ho chuka hota
+  hai, isliye exit pe kuch khota nahi.
+
+CODE KAHAN HAI:
+  main.py, line 540:  def main_menu()   (choice == '0' wala hissa)
+
+
+=====================================================================================
+QUICK REFERENCE: OPTION -> FILE -> FUNCTION
+=====================================================================================
+   Opt  Kaam                       File                Function
+   ---  -------------------------  ------------------  ------------------------------
+    1   Catalog dekhna             main.py             view_books
+    2   Book add                   main.py             add_book
+    3   Book kam/delete            main.py             remove_book
+    4   Book search                main.py             search_books
+    5   Students dekhna            main.py             view_students
+    6   Student add                main.py             add_student
+    7   Book issue                 main.py             issue_book
+    8   Book return + fine         main.py             return_book
+    9   Overdue list               main.py             view_overdue_books
+                                   preprocessing.py    get_cleaned_transactions
+   10   Student history            main.py             student_history
+   11   Cleaning report            preprocessing.py    print_cleaning_report
+   12   Charts menu (26 charts)    main.py             visualization_menu
+                                   visualizations.py   CHART_MENU + plot_* functions
+   13   Saare charts               visualizations.py   generate_all_visualizations
+   14   KPI dashboard              main.py             kpi_dashboard
+                                   preprocessing.py    get_library_kpis
+   15   Supply chain               main.py             supply_chain_case_study
+                                   preprocessing.py    get_cleaned_shipments
+                                   visualizations.py   plot_supply_chain_dashboard
+   16   Excel export               main.py             export_for_power_bi
+    0   Exit                       main.py             main_menu
+
+Aur detail (setup, har terminal command, syllabus mapping, viva Q&A): PROJECT_GUIDE.md
+=====================================================================================

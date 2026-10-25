@@ -37,23 +37,25 @@ cd "/Users/rahil/Developer/Project/DV Project/Data-Visualisation-Project-"
 ```
 `cd` = change directory. Path me space hai, isliye quotes `" "` zaroori hain.
 
-**Step 3 — Purana venv hatao** (agar pehle se bana hai aur kaam nahi kar raha)
+**Step 3 — Project folder ke andar wala purana venv hatao** (agar hai)
 ```bash
 rm -rf venv
 ```
 `rm -rf` = folder aur uske andar sab delete. Sirf `venv` folder hatega, project code nahi.
 
+> ⚠️ **Important (is Mac pe):** venv ko project folder ke **andar** banane par macOS ki security policy kuch library files (`.so`) block/kharab kar deti hai → error aata hai *"library load disallowed by system policy"* ya *"No module named 'pandas'"*. Isliye venv project ke **bahar** `~/.venvs/dv-lms` me banate hain. (`~` = aapka home folder `/Users/rahil`.)
+
 **Step 4 — Naya virtual environment banao**
 ```bash
-python3 -m venv venv
+python3 -m venv ~/.venvs/dv-lms
 ```
-Project ke liye alag Python "box" banta hai, taaki libraries baaki system se mix na hon.
+Project ke liye alag Python "box" banta hai (`~/.venvs/dv-lms` folder me), taaki libraries baaki system se mix na hon.
 
 **Step 5 — Virtual environment chalu karo**
 ```bash
-source venv/bin/activate
+source ~/.venvs/dv-lms/bin/activate
 ```
-Ab prompt ke aage `(venv)` dikhega. Matlab ab jo `python3`/`pip` chalaoge wo is box ka hai.
+Ab prompt ke aage `(dv-lms)` dikhega. Matlab ab jo `python3`/`pip` chalaoge wo is box ka hai.
 
 **Step 6 — Libraries install karo** (1–2 minute, internet chahiye)
 ```bash
@@ -72,7 +74,7 @@ Main menu khulega. Number type karo + Enter. Example: `12` = charts menu, `14` =
 cd "/Users/rahil/Developer/Project/DV Project/Data-Visualisation-Project-"
 ```
 ```bash
-source venv/bin/activate
+source ~/.venvs/dv-lms/bin/activate
 ```
 ```bash
 python3 main.py
@@ -159,6 +161,7 @@ Data-Visualisation-Project-/
 ├── requirements.txt     # 📦 Kaunsi Python libraries install karni hain
 ├── POWERBI_GUIDE.md     # 📑 Power BI Desktop me dashboard banane ka step-by-step guide (Unit 6)
 ├── PROJECT_GUIDE.md     # 📘 Ye file
+├── MENU_OPTIONS_EXPLAINED.txt # Main menu ke 0–16 options + code kis file/function/line me
 ├── README.md            # Short intro
 ├── .gitignore           # Git ko batata hai venv/ aur __pycache__/ ignore karo
 └── charts/              # 🖼️ Saare generated PNG charts yahan save hote hain
@@ -337,14 +340,16 @@ cd "Data-Visualisation-Project-"
 **Matlab:** terminal ko project folder me le jao (`cd` = change directory).
 
 ```bash
-python3 -m venv venv
+python3 -m venv ~/.venvs/dv-lms
 ```
-**Matlab:** `venv` naam ka ek **virtual environment** (alag Python box) banao, taaki is project ki libraries baaki system se mix na hon. `-m venv` = Python ka built-in venv module chalao.
+**Matlab:** `~/.venvs/dv-lms` folder me ek **virtual environment** (alag Python box) banao, taaki is project ki libraries baaki system se mix na hon. `-m venv` = Python ka built-in venv module chalao.
 
 ```bash
-source venv/bin/activate
+source ~/.venvs/dv-lms/bin/activate
 ```
-**Matlab:** us virtual environment ko **chalu** karo (macOS/Linux). Iske baad prompt ke aage `(venv)` dikhega. Windows pe: `venv\Scripts\activate`.
+**Matlab:** us virtual environment ko **chalu** karo (macOS/Linux). Iske baad prompt ke aage `(dv-lms)` dikhega. Windows pe venv project folder me bana sakte ho: `python -m venv venv` phir `venv\Scripts\activate`.
+
+> venv project folder ke bahar kyun? Is Mac pe project folder ke andar venv banane par macOS security library files block kar deti hai (Section 0 ka note dekho).
 
 ```bash
 pip install -r requirements.txt
@@ -658,8 +663,9 @@ Business users ke liye dashboard. Project Excel export deta hai, aur guide me Po
 
 | Problem | Solution |
 |---|---|
-| `ModuleNotFoundError: No module named 'pandas'` | venv activate karo (`source venv/bin/activate`) aur `pip install -r requirements.txt` chalao |
-| `venv/bin/python: no such file` / venv toot gaya | Purana venv hata ke naya banao: `rm -rf venv`, phir Section 5.1 dobara |
+| `ModuleNotFoundError: No module named 'pandas'` | venv activate karo (`source ~/.venvs/dv-lms/bin/activate`) aur `pip install -r requirements.txt` chalao |
+| `library load disallowed by system policy` | venv project folder ke andar bana hai → macOS block karta hai. `rm -rf venv`, phir venv `~/.venvs/dv-lms` me banao (Section 0) |
+| venv toot gaya / python nahi mil raha | `rm -rf ~/.venvs/dv-lms`, phir Section 0 ke Step 4–6 dobara |
 | Chart window nahi khul raha | `--all` mode windows nahi kholta (by design). Menu 12 ya `--chart N` se kholo |
 | Window band karne tak menu ruk jaata hai | Normal hai — chart window band karo, menu wapas aa jayega |
 | Data ajeeb lag raha / kharab ho gaya | `python3 main.py --reset-db` (⚠️ apna added data jayega) |

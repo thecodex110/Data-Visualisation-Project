@@ -6,9 +6,11 @@ Is ek file me sab kuch hai: project me **kya hai**, **kaise chalta hai**, **har 
 ---
 
 ## 📑 Table of Contents
+0. [⚡ Sabse pehle: Terminal me project kaise ON karein](#0--sabse-pehle-terminal-me-project-kaise-on-karein)
 1. [Project kya hai?](#1-project-kya-hai)
 2. [Project me kya-kya hai (files & folders)](#2-project-me-kya-kya-hai-files--folders)
 3. [Project kaise chalta hai (data flow)](#3-project-kaise-chalta-hai-data-flow)
+   - [3A. Code andar se kaise kaam karta hai (step-by-step)](#3a-code-andar-se-kaise-kaam-karta-hai-step-by-step)
 4. [Database ke 5 tables](#4-database-ke-5-tables)
 5. [Setup + har terminal command ka matlab](#5-setup--har-terminal-command-ka-matlab)
 6. [Main Menu (0–16) ka matlab](#6-main-menu-016-ka-matlab)
@@ -18,6 +20,92 @@ Is ek file me sab kuch hai: project me **kya hai**, **kaise chalta hai**, **har 
 10. [Case Study: Supply Chain & Logistics Dashboard](#10-case-study-supply-chain--logistics-dashboard)
 11. [Viva Questions & Answers](#11-viva-questions--answers)
 12. [Problem aaye to (Troubleshooting)](#12-problem-aaye-to-troubleshooting)
+
+---
+
+## 0. ⚡ Sabse pehle: Terminal me project kaise ON karein
+
+> Mac ke liye steps. Har command terminal me paste karo aur **Enter** dabao. (Windows ke commands Section 5 me hain.)
+
+### Pehli baar (one-time setup)
+
+**Step 1 — Terminal kholo.** `Cmd + Space` dabao, `Terminal` likho, Enter.
+
+**Step 2 — Project folder me jao**
+```bash
+cd "/Users/rahil/Developer/Project/DV Project/Data-Visualisation-Project-"
+```
+`cd` = change directory. Path me space hai, isliye quotes `" "` zaroori hain.
+
+**Step 3 — Purana venv hatao** (agar pehle se bana hai aur kaam nahi kar raha)
+```bash
+rm -rf venv
+```
+`rm -rf` = folder aur uske andar sab delete. Sirf `venv` folder hatega, project code nahi.
+
+**Step 4 — Naya virtual environment banao**
+```bash
+python3 -m venv venv
+```
+Project ke liye alag Python "box" banta hai, taaki libraries baaki system se mix na hon.
+
+**Step 5 — Virtual environment chalu karo**
+```bash
+source venv/bin/activate
+```
+Ab prompt ke aage `(venv)` dikhega. Matlab ab jo `python3`/`pip` chalaoge wo is box ka hai.
+
+**Step 6 — Libraries install karo** (1–2 minute, internet chahiye)
+```bash
+pip install -r requirements.txt
+```
+
+**Step 7 — Project chalao**
+```bash
+python3 main.py
+```
+Main menu khulega. Number type karo + Enter. Example: `12` = charts menu, `14` = KPI dashboard, `15` = supply chain, `0` = exit.
+
+### Agli baar se (roz ka kaam) — sirf 3 commands
+
+```bash
+cd "/Users/rahil/Developer/Project/DV Project/Data-Visualisation-Project-"
+```
+```bash
+source venv/bin/activate
+```
+```bash
+python3 main.py
+```
+
+### Useful shortcuts
+
+```bash
+python3 main.py --all
+```
+Saare 26 charts `charts/` folder me save (koi window nahi khulegi).
+
+```bash
+python3 main.py --list
+```
+Charts ki numbered list.
+
+```bash
+python3 main.py --chart 5
+```
+Sirf chart 5 (interactive explorer) window me kholo. Koi bhi number 1–26 de sakte ho.
+
+```bash
+open charts
+```
+Saare bane hue charts Finder me dekho.
+
+```bash
+deactivate
+```
+Kaam khatam — venv band.
+
+> 💡 Jab chart window khuli hoti hai, menu ruka rehta hai. Window band karo → menu wapas aa jayega.
 
 ---
 
@@ -136,6 +224,90 @@ Data-Visualisation-Project-/
 - `overdue_days` = return date (ya aaj) − due date, minimum 0
 - `effective_fine` = overdue_days × ₹5
 - `return_date` khaali (NULL) = book abhi student ke paas hai (active loan) — ye missing value galti nahi, **meaning** hai.
+
+---
+
+## 3A. Code andar se kaise kaam karta hai (step-by-step)
+
+### (a) Program start hone par (`python3 main.py`)
+1. Python `main.py` ko upar se padhta hai → `import db_setup, preprocessing, visualizations` (teeno files load).
+2. `visualizations.py` load hote hi chart style set ho jaata hai (`sns.set_theme`, fonts, department colours).
+3. Neeche `if __name__ == "__main__":` block chalta hai → `parse_args()` dekhta hai koi flag (`--all`, `--chart` ...) diya ya nahi.
+4. `check_db()`:
+   - `library.db` nahi hai → `db_setup.init_db()` (tables banao) + `db_setup.seed_db()` (sample data daalo).
+   - `db_setup.ensure_shipments()` → `shipments` table nahi hai to sirf wahi bana ke bhar deta hai.
+5. Koi flag nahi → `main_menu()` → ek `while True` loop jo menu print karta hai, `input()` se number leta hai, aur `actions` dictionary se sahi function call karta hai (jaise `'7' → issue_book`). `0` pe `sys.exit(0)`.
+
+### (b) Book issue karna (menu 7 → `issue_book()`)
+1. Student ID aur Book ID input.
+2. `SELECT name FROM students ...` → student hai ya nahi check.
+3. `SELECT title, available_copies FROM books ...` → book hai aur copy bachi hai ya nahi check.
+4. `issue_date = aaj`, `due_date = aaj + 14 din` (`timedelta(days=14)`).
+5. `INSERT INTO transactions (..., return_date = NULL, fine = 0)`.
+6. `UPDATE books SET available_copies = available_copies - 1`.
+7. `conn.commit()` → database me pakka save.
+
+### (c) Book return karna (menu 8 → `return_book()`)
+1. Transaction ID input → transaction + book + student JOIN karke laata hai.
+2. `return_date` pehle se bhara hai → "already returned" message.
+3. `overdue_days = max(0, aaj − due_date)`, `fine = overdue_days × 5`.
+4. `UPDATE transactions SET return_date, fine_amount` + `UPDATE books SET available_copies + 1` → commit.
+
+### (d) Ek chart kaise banta hai (example: chart 8, Bar Plot)
+1. Menu 12 → `visualization_menu()` → `print_chart_list()` `CHART_MENU` list se numbered list dikhata hai.
+2. Aap `8` daalte ho → `run_chart(8)` → `CHART_MENU[7]` ka function `plot_department_books()` call.
+3. Function `get_department_aggregates()` (preprocessing) bulata hai:
+   - `load_raw_data()` → 4 tables `pd.read_sql_query` se DataFrames me.
+   - `get_cleaned_transactions()` → JOIN + cleaning.
+   - `groupby('dept_id')` se copies ka sum, `unstack` se status counts → ek summary table.
+4. `plt.subplots()` → figure; `ax.bar(...)` → bars; `ax.text(...)` → har bar pe number; title/labels.
+5. `save_chart("books_by_department.png", ...)`:
+   - `charts/` folder na ho to banata hai,
+   - `savefig(dpi=200)` → PNG save,
+   - `SHOW_WINDOWS = True` ho to `plt.show()` → window khulti hai,
+   - `plt.close('all')` → memory saaf.
+
+### (e) `--all` / menu 13 (sab charts ek saath)
+`generate_all_visualizations()` → `set_show_windows(False)` (windows band) → `CHART_MENU` ke har function ko loop me call → end me windows setting wapas purani. Isliye ye fast hai aur koi popup nahi aata.
+
+### (f) Interactive Explorer (chart 5) andar se
+- Data: `pivot_table` → rows = month, columns = department, value = issues.
+- Har department ki ek line (`ax.plot`) → `lines` dictionary me save.
+- **CheckButtons** (left box): click → `on_check()` → us line ka `set_visible` ulta → `draw_idle()` se redraw. *(= Power BI slicer jaisa filter)*
+- **Slider** (neeche): value badlo → `on_slide()` → har line ka data `rolling(window).mean()` se smooth.
+- **Hover**: `mpl_connect('motion_notify_event', on_hover)` → mouse move pe `line.contains(event)` check → point mila to annotation box me "Dept, Month: issues" dikhata hai.
+- `fig._widgets = (check, slider)` → widgets ka reference rakhta hai, warna Python unhe delete kar deta aur buttons kaam nahi karte.
+
+### (g) KPI Dashboard (menu 14 → `kpi_dashboard()`)
+1. **Slicers**: department number aur year input (0 = All).
+2. `preprocessing.get_library_kpis(dept, year)` → filter lagake numbers: titles, copies, on loan, utilisation %, active/overdue loans, fines, is mahine vs pichle mahine issues.
+3. Terminal me **Cards** (numbers), **KPI** (▲▼ change, overdue rate vs 20% target), **Gauge** (`_text_gauge()` → `[####------] 8.2%` text bar).
+4. **Drill-down**: Level 1 = dept-wise loans (█ bars); department naam type karo → Level 2 = us dept ki top books.
+
+### (h) Supply Chain Case Study (menu 15)
+1. Region choose (North/West/South/East/All).
+2. `get_cleaned_shipments(region)` → shipments + books JOIN; `transit_days`, `delay_days`, `status` nikale; region filter.
+3. Terminal me: total shipments, units, freight, on-time gauge, status %, routes table (`groupby('origin_city')`).
+4. `plot_supply_chain_dashboard(region)` → `gridspec` se 3 rows ka dashboard:
+   - Row 1: `_kpi_card()` × 4 (rounded box + bada number) + `_gauge()` (matplotlib `Wedge` se semicircle, needle = on-time %, blue mark = 90% target).
+   - Row 2: route map (`annotate` arrows: city → Pune; width = shipments, colour = on-time %) + region-wise stacked bar.
+   - Row 3: monthly on-time % line + courier-wise average delay.
+5. File: `charts/supply_chain_dashboard_<region>.png`.
+
+### (i) Shipment data kaise bana (`db_setup.seed_shipments`)
+- Har shipment ke liye random book → uska `publisher_state` → us state ka hub city (Mumbai, Delhi...).
+- `haversine_km()` → city se Pune campus ki asli doori.
+- Expected days = `ceil(distance / 450) + 1`.
+- Delay ka chance: base 15% + India Post ho to +15% + lambi doori pe zyada → isliye dashboard me India Post sabse slow dikhta hai.
+- Delivery date aaj ke baad aaye → `NULL` (abhi raste me / In Transit).
+
+### (j) Maps (charts 22–25) bina internet ke
+- `STATE_COORDS` = har state ka (latitude, longitude).
+- **Projection** (`_project()`): Equirectangular = seedha lon/lat; Mercator = `y = ln(tan(45° + lat/2))`; Orthographic = globe ka 3D → 2D formula.
+- **Tile map** (`STATE_TILES`): har state ek grid square (column, row) rough geography ke hisaab se → `_draw_state_tiles()` colour (choropleth) ya size (cartogram) data se set karta hai.
+
+### (k) Excel export (menu 16 / `--export`)
+5 tables `read_sql_query` → `pd.ExcelWriter(engine='openpyxl')` → har table alag sheet → `library_export.xlsx`. Ye file Power BI Desktop me "Get Data → Excel" se load hoti hai.
 
 ---
 

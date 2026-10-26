@@ -411,49 +411,80 @@ def get_market_kpis(sector_name=None, risk_profile=None, db_path=DB_NAME):
         'trades_last_month': int(month_counts.get(this_month - 1, 0)),
     }
 
-def get_cleaned_shipments(region=None, db_path=DB_NAME):
-    """Cleans shipment logs: transit time, delay and delivery status (Supply Chain case study)."""
+def format_inr(value, sign=False):
+    """Indian style money text: Rs 1.37 Cr / Rs 15.1 L / Rs 8,500."""
+    prefix = ('+' if value > 0 else '-' if value < 0 else '') if sign else ('-' if value < 0 else '')
+    v = abs(value)
+    if v >= 1e7:
+        return f"{prefix}Rs {v / 1e7:.2f} Cr"
+    if v >= 1e5:
+        return f"{prefix}Rs {v / 1e5:.1f} L"
+    return f"{prefix}Rs {v:,.0f}"
+
+def get_top_movers(n=5, sector_name=None, db_path=DB_NAME):
+    """Today's biggest gainers and losers (by 1-day % change)."""
+    stocks = get_stock_summary(db_path)
+    if sector_name:
+        stocks = stocks[stocks['sector_name'] == sector_name]
+    ranked = stocks.sort_values('change_1d', ascending=False)
+    return ranked.head(n), ranked.tail(n).iloc[::-1]
+
+def market_mood(breadth_pct):
+    """Plain-language market mood from breadth (% of stocks above their 50-day average)."""
+    if breadth_pct >= 60:
+        return "BULLISH", "most stocks are in an uptrend"
+    if breadth_pct >= 40:
+        return "NEUTRAL", "the market is mixed - about half the stocks are rising"
+    return "BEARISH", "most stocks are in a downtrend"
+
+def get_cleaned_deliveries(region=None, db_path=DB_NAME):
+    """Cleans the share-delivery log (Supply Chain case study): settlement days, delay and status."""
     conn = get_connection(db_path)
     df = pd.read_sql_query("""
-        SELECT sh.*, s.symbol, s.company_name, sec.sector_name
-        FROM shipments sh
-        JOIN stocks s ON sh.stock_id = s.stock_id
+        SELECT d.*, t.quantity, t.buy_price, t.investor_id, i.name AS investor_name,
+               s.symbol, sec.sector_name
+        FROM deliveries d
+        JOIN trades t ON d.trade_id = t.trade_id
+        JOIN investors i ON t.investor_id = i.investor_id
+        JOIN stocks s ON t.stock_id = s.stock_id
         JOIN sectors sec ON s.sector_id = sec.sector_id;
     """, conn)
     conn.close()
-
+    
     today = pd.Timestamp(datetime.now().date())
-    df['dispatch_dt'] = pd.to_datetime(df['dispatch_date'])
+    df['order_dt'] = pd.to_datetime(df['order_date'])
     df['expected_dt'] = pd.to_datetime(df['expected_date'])
     df['delivery_dt'] = pd.to_datetime(df['delivery_date'])
     delivered = df['delivery_dt'].notnull()
     end = df['delivery_dt'].fillna(today)
-
-    df['transit_days'] = (end - df['dispatch_dt']).dt.days
-    df['delay_days'] = (end - df['expected_dt']).dt.days.clip(lower=0)
+    
+    # Settlement is counted in TRADING days (weekends do not count): T+1 = 1
+    df['settle_days'] = [np.busday_count(o.date(), e.date()) for o, e in zip(df['order_dt'], end)]
+    df['delay_days'] = [max(0, np.busday_count(x.date(), e.date())) for x, e in zip(df['expected_dt'], end)]
+    df['order_value'] = df['quantity'] * df['buy_price']
     df['status'] = np.select(
         [delivered & (df['delay_days'] == 0), delivered, ~delivered & (df['delay_days'] > 0)],
-        ['Delivered On-Time', 'Delivered Late', 'Delayed In Transit'],
-        default='In Transit'
+        ['Delivered On-Time (T+1)', 'Delivered Late', 'Pending - Delayed'],
+        default='Pending (in settlement)'
     )
-    df['dispatch_month'] = df['dispatch_dt'].dt.to_period('M').astype(str)
+    df['delay_reason'] = df['delay_reason'].fillna('-')
+    df['order_month'] = df['order_dt'].dt.to_period('M').astype(str)
     if region:
         df = df[df['region'] == region]
     return df
 
-def get_company_logistics_scorecard(region=None, db_path=DB_NAME):
-    """Per company: shipments, on-time delivery % and the company's 1-year stock return."""
-    ship = get_cleaned_shipments(region, db_path)
-    delivered = ship[ship['status'].str.startswith('Delivered')]
-    score = delivered.groupby(['symbol', 'sector_name']).agg(
-        delivered=('shipment_id', 'count'),
-        on_time_pct=('status', lambda s: (s == 'Delivered On-Time').mean() * 100),
-        avg_delay=('delay_days', 'mean')
+def get_broker_scorecard(region=None, db_path=DB_NAME):
+    """Per broker: orders, on-time T+1 delivery %, average delay and a report-card grade."""
+    deliv = get_cleaned_deliveries(region, db_path)
+    done = deliv[deliv['status'].str.startswith('Delivered')]
+    score = done.groupby('broker').agg(
+        orders=('delivery_id', 'count'),
+        on_time_pct=('status', lambda s: (s == 'Delivered On-Time (T+1)').mean() * 100),
+        late=('status', lambda s: (s == 'Delivered Late').sum()),
+        avg_settle_days=('settle_days', 'mean')
     ).reset_index()
-    shipments = ship.groupby('symbol').size().rename('shipments')
-    score = score.merge(shipments, on='symbol')
-    returns = get_stock_summary(db_path).set_index('symbol')['return_1y']
-    score['return_1y'] = score['symbol'].map(returns)
+    # Grade: A = almost always on time, B = sometimes late, C = often late
+    score['grade'] = np.select([score['on_time_pct'] >= 95, score['on_time_pct'] >= 88], ['A', 'B'], default='C')
     return score.sort_values('on_time_pct', ascending=False)
 
 if __name__ == "__main__":

@@ -1,7 +1,18 @@
 # All import
 import os
+import sys
+import subprocess
+import textwrap
 import numpy as np
 import pandas as pd
+import matplotlib
+
+# The menu process never opens a GUI window itself: on macOS, quitting a matplotlib window
+# (Cmd+Q) quits the whole Python program. Charts are drawn off-screen ('Agg') and opened in
+# the system image viewer instead; the live interactive chart runs in its own child process.
+LIVE_WINDOW = os.environ.get("DV_LIVE_WINDOW") == "1"
+if not LIVE_WINDOW:
+    matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from matplotlib.colors import TwoSlopeNorm, Normalize
@@ -28,11 +39,15 @@ from preprocessing import (
     get_investor_summary,
     get_stock_return_matrix,
     get_state_geospatial_summary,
-    get_cleaned_shipments,
-    get_company_logistics_scorecard,
+    get_cleaned_deliveries,
+    get_broker_scorecard,
+    get_market_kpis,
+    get_top_movers,
+    market_mood,
+    format_inr,
     analyse_stock
 )
-from db_setup import PLANT_HUBS, PORT_LOCATION, RISK_PROFILES
+from db_setup import INVESTOR_CITIES, EXCHANGE, RISK_PROFILES
 
 CHARTS_DIR = "charts"
 
@@ -46,23 +61,43 @@ def set_show_windows(flag):
 def ensure_dirs():
     os.makedirs(CHARTS_DIR, exist_ok=True)
 
-def show_and_close():
-    """Helper to display plot and close figure buffer cleanly without hanging."""
+def open_in_viewer(path):
+    """Opens a saved PNG in the system image viewer (Preview on macOS) without blocking the menu."""
     try:
-        if SHOW_WINDOWS and plt.get_backend().lower() != 'agg':
-            plt.show()
-    except Exception:
-        pass
-    finally:
-        plt.close('all')
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", path])
+        elif sys.platform.startswith("win"):
+            os.startfile(path)
+        else:
+            subprocess.Popen(["xdg-open", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        print(f" [i] Could not open the image automatically ({e}). Open it from the charts/ folder.")
 
-def save_chart(filename, label, fig=None):
-    """Saves the current (or given) figure to charts/ and then shows it if windows are enabled."""
+def open_live_window(func_name):
+    """Runs one chart function in a separate Python process with a real (interactive) window.
+    Closing or quitting that window only ends the child process - the menu keeps running."""
+    env = dict(os.environ, DV_LIVE_WINDOW="1")
+    code = f"import visualizations as v; v.{func_name}()"
+    subprocess.Popen([sys.executable, "-c", code], cwd=os.path.dirname(os.path.abspath(__file__)), env=env)
+    print(" [i] Live interactive window is opening in a separate process (the menu stays usable).")
+
+def save_chart(filename, label, fig=None, live_func=None):
+    """Saves the current (or given) figure to charts/, then shows it without ever blocking or closing the menu."""
     ensure_dirs()
     out_path = os.path.join(CHARTS_DIR, filename)
     (fig or plt.gcf()).savefig(out_path, dpi=200, bbox_inches='tight')
-    print(f" [Chart Saved] {label} -> {out_path}")
-    show_and_close()
+    try:
+        if LIVE_WINDOW:
+            plt.show()                      # only inside the child process
+            return out_path
+        print(f" [Chart Saved] {label} -> {out_path}")
+        if SHOW_WINDOWS:
+            if live_func:
+                open_live_window(live_func)
+            else:
+                open_in_viewer(out_path)
+    finally:
+        plt.close('all')
     return out_path
 
 # Professional modern styling
@@ -110,7 +145,7 @@ STATE_TILES = {
     "Telangana": (2, 3), "Karnataka": (1, 4), "Kerala": (1, 5), "Tamil Nadu": (2, 5)
 }
 # National Stock Exchange, BKC Mumbai: where every order is matched
-EXCHANGE_LOCATION = ("NSE, Mumbai", 19.0662, 72.8657)
+EXCHANGE_LOCATION = EXCHANGE
 
 def _clean_axes(ax):
     ax.spines['top'].set_visible(False)
@@ -290,7 +325,8 @@ def plot_interactive_explorer():
     fig.canvas.mpl_connect('motion_notify_event', on_hover)
     fig._widgets = (check, slider)  # keep widget references alive while the window is open
 
-    save_chart("interactive_explorer_snapshot.png", "Interactive Explorer (snapshot; live window opens in menu mode)", fig=fig)
+    save_chart("interactive_explorer_snapshot.png", "Interactive Explorer (snapshot; live window opens in menu mode)", fig=fig,
+               live_func="plot_interactive_explorer")
 
 def plot_graphical_perception():
     """Graphical perception theory: the same numbers encoded by position, length, angle, area and colour."""
@@ -1011,14 +1047,15 @@ def plot_proportional_cartogram():
     save_chart("cartogram.png", "Cartograms")
 
 # ==============================================================================
-# SELF-STUDY CASE STUDY: SUPPLY CHAIN & LOGISTICS DASHBOARD
-# (Route mapping, delivery status KPIs, filtering by region) - linked to stock returns
+# DASHBOARD HELPERS (KPI card + gauge, shared by both dashboards)
 # ==============================================================================
 
-def _kpi_card(ax, title, value, color):
-    ax.add_patch(FancyBboxPatch((0.03, 0.08), 0.94, 0.84, boxstyle='round,pad=0.02', fc='#F8FAFC', ec=color, linewidth=2))
-    ax.text(0.5, 0.62, value, ha='center', va='center', fontsize=20, fontweight='bold', color=color)
-    ax.text(0.5, 0.28, title, ha='center', va='center', fontsize=9.5, color='#334155')
+def _kpi_card(ax, title, value, color, note=""):
+    ax.add_patch(FancyBboxPatch((0.03, 0.06), 0.94, 0.88, boxstyle='round,pad=0.02', fc='#F8FAFC', ec=color, linewidth=2))
+    ax.text(0.5, 0.64, value, ha='center', va='center', fontsize=19, fontweight='bold', color=color)
+    ax.text(0.5, 0.34, title, ha='center', va='center', fontsize=9.5, color='#334155', fontweight='bold')
+    if note:
+        ax.text(0.5, 0.16, note, ha='center', va='center', fontsize=7.5, color='#64748B')
     ax.axis('off')
 
 def _gauge(ax, pct, target, caption):
@@ -1036,109 +1073,267 @@ def _gauge(ax, pct, target, caption):
     ax.set_aspect('equal')
     ax.axis('off')
 
-def plot_supply_chain_dashboard(region=None):
-    """Supply Chain & Logistics dashboard: KPI cards, gauge, route map, status by region, trend, and logistics vs stock return."""
-    ship = get_cleaned_shipments(region)
-    if ship.empty:
-        print(" [!] No shipments for this filter.")
-        return None
-    delivered = ship[ship['status'].str.startswith('Delivered')]
-    on_time_pct = (delivered['status'] == 'Delivered On-Time').mean() * 100 if len(delivered) else 0.0
-    status_order = ['Delivered On-Time', 'Delivered Late', 'In Transit', 'Delayed In Transit']
-    status_colors = ['#10B981', '#F59E0B', '#3B82F6', '#EF4444']
+# ==============================================================================
+# KPI DASHBOARD IMAGE (main menu option 14) - Power BI style market page
+# ==============================================================================
+
+def plot_market_dashboard(sector=None, risk=None):
+    """Market & portfolio dashboard: cards, breadth gauge, top movers, sector drill-down, monthly KPI, P&L by investor type."""
+    k = get_market_kpis(sector, risk)
+    mood, mood_text = market_mood(k['breadth_pct'])
+    gainers, losers = get_top_movers(5, sector)
+    stocks = get_stock_summary()
+    trades = get_cleaned_trades()
+    if sector:
+        trades = trades[trades['sector_name'] == sector]
+    if risk:
+        trades = trades[trades['risk_profile'] == risk]
 
     fig = plt.figure(figsize=(18, 13))
-    gs = fig.add_gridspec(3, 5, height_ratios=[0.8, 2.2, 1.6], hspace=0.5, wspace=0.6)
+    gs = fig.add_gridspec(3, 5, height_ratios=[0.85, 1.9, 1.5], hspace=0.5, wspace=0.55)
 
-    # Row 1: KPI cards + gauge
-    _kpi_card(fig.add_subplot(gs[0, 0]), "Total Shipments", f"{len(ship)}", '#1E3A8A')
-    _kpi_card(fig.add_subplot(gs[0, 1]), "Containers Shipped", f"{ship['quantity'].sum()}", '#0D9488')
-    _kpi_card(fig.add_subplot(gs[0, 2]), "Open (In Transit)", f"{(~ship['status'].str.startswith('Delivered')).sum()}", '#3B82F6')
-    _kpi_card(fig.add_subplot(gs[0, 3]), "Avg Transit Days", f"{delivered['transit_days'].mean():.1f}", '#D97706')
-    _gauge(fig.add_subplot(gs[0, 4]), on_time_pct, 90, "On-time delivery")
+    # Row 1: cards + gauge
+    _kpi_card(fig.add_subplot(gs[0, 0]), "Value of Shares Held", format_inr(k['open_value']), '#1E3A8A',
+              f"invested {format_inr(k['open_invested'])}")
+    pnl_color = lambda v: UP if v >= 0 else DOWN
+    _kpi_card(fig.add_subplot(gs[0, 1]), "Unrealised P&L", format_inr(k['unrealised_pnl'], sign=True),
+              pnl_color(k['unrealised_pnl']), "paper profit - not sold yet")
+    _kpi_card(fig.add_subplot(gs[0, 2]), "Realised P&L", format_inr(k['realised_pnl'], sign=True),
+              pnl_color(k['realised_pnl']), "profit already booked")
+    _kpi_card(fig.add_subplot(gs[0, 3]), "Win Rate", f"{k['win_rate_pct']:.0f}%", '#0D9488',
+              f"target 55% | {k['stop_loss_hits']} stop-loss alerts")
+    _gauge(fig.add_subplot(gs[0, 4]), k['breadth_pct'], 60, f"Stocks in uptrend - mood {mood}")
 
-    # Row 2 left: route map (factory hubs -> export port)
-    ax_map = fig.add_subplot(gs[1, :3])
-    port_name, p_lat, p_lon = PORT_LOCATION
-    routes = ship.groupby('origin_city').agg(
-        shipments=('shipment_id', 'count'),
-        on_time=('status', lambda s: (s == 'Delivered On-Time').sum() / max(1, s.str.startswith('Delivered').sum()) * 100)
+    # Row 2 left: top movers today
+    ax_mv = fig.add_subplot(gs[1, :2])
+    movers = pd.concat([gainers, losers.iloc[::-1]]).drop_duplicates('symbol').sort_values('change_1d')
+    bars = ax_mv.barh(movers['symbol'], movers['change_1d'], color=[UP if v >= 0 else DOWN for v in movers['change_1d']])
+    for bar, v in zip(bars, movers['change_1d']):
+        ax_mv.text(v + (0.08 if v >= 0 else -0.08), bar.get_y() + bar.get_height() / 2, f"{v:+.2f}%",
+                   va='center', ha='left' if v >= 0 else 'right', fontsize=8.5)
+    ax_mv.axvline(0, color='#111827', linewidth=1)
+    lim = movers['change_1d'].abs().max() * 1.35 + 0.2
+    ax_mv.set_xlim(-lim, lim)
+    ax_mv.set_xlabel("Change today (%)")
+    ax_mv.set_title("Top 5 Gainers & Losers Today", fontweight='bold')
+    _clean_axes(ax_mv)
+
+    # Row 2 right: drill-down (sector level, or the stocks inside the chosen sector)
+    ax_dd = fig.add_subplot(gs[1, 2:])
+    if sector:
+        level = stocks[stocks['sector_name'] == sector].set_index('symbol')['return_1y'].sort_values()
+        ax_dd.set_title(f"Drill-down Level 2: Stocks inside {sector} (1-Year Return)", fontweight='bold')
+    else:
+        level = stocks.groupby('sector_name')['return_1y'].mean().sort_values()
+        ax_dd.set_title("Drill-down Level 1: Average 1-Year Return by Sector", fontweight='bold')
+    colors = [SECTOR_PALETTE[sector]] * len(level) if sector else [SECTOR_PALETTE[s] for s in level.index]
+    bars = ax_dd.barh(level.index, level.values, color=colors)
+    for bar, v in zip(bars, level.values):
+        ax_dd.text(v + (1 if v >= 0 else -1), bar.get_y() + bar.get_height() / 2, f"{v:+.1f}%",
+                   va='center', ha='left' if v >= 0 else 'right', fontsize=9)
+    ax_dd.axvline(0, color='#111827', linewidth=1)
+    lim = np.abs(level.values).max() * 1.3 + 2
+    ax_dd.set_xlim(-lim, lim)
+    ax_dd.set_xlabel("1-Year Return (%)")
+    _clean_axes(ax_dd)
+
+    # Row 3 left: KPI trend - trades per month, this month vs last month highlighted
+    ax_kp = fig.add_subplot(gs[2, :3])
+    monthly = trades.groupby('buy_month').size()
+    colors = ['#CBD5E1'] * len(monthly)
+    if len(monthly) >= 2:
+        colors[-2], colors[-1] = '#94A3B8', '#2563EB'
+    ax_kp.bar(monthly.index, monthly.values, color=colors)
+    for i, v in enumerate(monthly.values):
+        ax_kp.text(i, v + 0.3, str(v), ha='center', fontsize=8)
+    ax_kp.set_ylabel("Buy orders")
+    change = k['trades_this_month'] - k['trades_last_month']
+    ax_kp.set_title(f"KPI: Trades this month {k['trades_this_month']} vs last month {k['trades_last_month']} "
+                    f"({'▲' if change > 0 else '▼' if change < 0 else '■'} {change:+d})", fontweight='bold')
+    _month_ticks(ax_kp)
+    _clean_axes(ax_kp)
+
+    # Row 3 right: profit by investor type
+    ax_rk = fig.add_subplot(gs[2, 3:])
+    sold = trades['sell_date_dt'].notnull()
+    by_risk = pd.DataFrame({
+        'Realised': trades[sold].groupby('risk_label')['pnl'].sum(),
+        'Unrealised': trades[~sold].groupby('risk_label')['pnl'].sum(),
+    }).reindex(RISK_ORDER).fillna(0) / 1e5
+    by_risk.plot(kind='bar', ax=ax_rk, color=['#0D9488', '#93C5FD'], width=0.7)
+    ax_rk.axhline(0, color='#111827', linewidth=1)
+    ax_rk.set_ylabel("Profit / Loss (Rs lakh)")
+    ax_rk.set_xlabel("")
+    ax_rk.tick_params(axis='x', rotation=0)
+    ax_rk.set_title("Profit by Investor Type", fontweight='bold')
+    ax_rk.legend(fontsize=8)
+    _clean_axes(ax_rk)
+
+    label = f"Sector: {sector or 'All'} | Investor type: {RISK_PROFILES.get(risk, 'All')}"
+    fig.suptitle(f"Market Dashboard  |  {label}\nMarket mood: {mood} - {mood_text}", fontsize=15, fontweight='bold', y=0.97)
+    suffix = f"{(sector or 'all').lower()}_{RISK_PROFILES.get(risk, 'all').lower()}"
+    return save_chart(f"market_dashboard_{suffix}.png", f"Market Dashboard ({label})", fig=fig)
+
+# ==============================================================================
+# SELF-STUDY CASE STUDY: SUPPLY CHAIN & LOGISTICS DASHBOARD
+# The stock market's own supply chain = SHARE DELIVERY (T+1 settlement):
+# route mapping, delivery status KPIs, filtering by region
+# ==============================================================================
+
+PIPELINE_STEPS = [
+    ("1. Investor", "places a BUY order\nin the broker app"),
+    ("2. Broker", "Zerodha, Groww,\nUpstox ... sends order"),
+    ("3. NSE Mumbai", "exchange matches\nbuyer with a seller"),
+    ("4. Clearing Corp", "NSE Clearing settles\nmoney & shares"),
+    ("5. Depository", "CDSL / NSDL move\nthe shares"),
+    ("6. Demat Account", "shares arrive -\nDELIVERED (T+1)"),
+]
+REGION_COLORS = {'North': '#2563EB', 'West': '#EA580C', 'South': '#0D9488', 'East': '#7C3AED', 'Other': '#64748B'}
+
+def _draw_pipeline(ax, deliv):
+    """Horizontal flow diagram: how bought shares travel from the investor's order to the demat account."""
+    n = len(PIPELINE_STEPS)
+    for i, (head, body) in enumerate(PIPELINE_STEPS):
+        x = i / n + 0.008
+        last = i == n - 1
+        ax.add_patch(FancyBboxPatch((x, 0.30), 1 / n - 0.035, 0.62, boxstyle='round,pad=0.01',
+                                    fc='#DCFCE7' if last else '#EFF6FF', ec='#16A34A' if last else '#2563EB', linewidth=1.8))
+        cx = x + (1 / n - 0.035) / 2
+        ax.text(cx, 0.77, head, ha='center', va='center', fontsize=10.5, fontweight='bold', color='#1E3A8A')
+        ax.text(cx, 0.50, body, ha='center', va='center', fontsize=8, color='#334155')
+        if not last:
+            ax.annotate("", xy=(x + 1 / n - 0.005, 0.61), xytext=(x + 1 / n - 0.033, 0.61),
+                        arrowprops=dict(arrowstyle='-|>', color='#2563EB', lw=2))
+    on_time = (deliv['status'] == 'Delivered On-Time (T+1)').sum()
+    late = (deliv['status'] == 'Delivered Late').sum()
+    pending = deliv['status'].str.startswith('Pending').sum()
+    ax.text(0.5, 0.08, f"Day T = order day  ->  shares should reach the demat account on T+1 (next trading day).   "
+                       f"This filter: {len(deliv)} orders  =  {on_time} on time  +  {late} late  +  {pending} still pending",
+            ha='center', va='center', fontsize=10, color='#111827', fontweight='bold')
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis('off')
+
+def plot_supply_chain_dashboard(region=None):
+    """Share Delivery Tracker: settlement pipeline, KPI cards, gauge, order-route map, status by region, broker & delay analysis."""
+    deliv = get_cleaned_deliveries(region)
+    if deliv.empty:
+        print(" [!] No orders for this filter.")
+        return None
+    done = deliv[deliv['status'].str.startswith('Delivered')]
+    on_time_pct = (done['status'] == 'Delivered On-Time (T+1)').mean() * 100 if len(done) else 0.0
+    status_order = ['Delivered On-Time (T+1)', 'Delivered Late', 'Pending (in settlement)', 'Pending - Delayed']
+    status_colors = ['#10B981', '#F59E0B', '#3B82F6', '#EF4444']
+
+    fig = plt.figure(figsize=(18, 16))
+    gs = fig.add_gridspec(4, 5, height_ratios=[0.75, 0.8, 2.0, 1.5], hspace=0.38, wspace=0.6)
+
+    # Row 1: the settlement chain (what "delivery" means in the stock market)
+    _draw_pipeline(fig.add_subplot(gs[0, :]), deliv)
+
+    # Row 2: KPI cards + gauge
+    _kpi_card(fig.add_subplot(gs[1, 0]), "Buy Orders", f"{len(deliv)}", '#1E3A8A', format_inr(deliv['order_value'].sum()))
+    _kpi_card(fig.add_subplot(gs[1, 1]), "Shares Delivered", f"{int(done['quantity'].sum()):,}", '#0D9488', "credited to demat")
+    _kpi_card(fig.add_subplot(gs[1, 2]), "Avg Days to Demat", f"T+{done['settle_days'].mean():.2f}", '#D97706', "ideal = T+1")
+    _kpi_card(fig.add_subplot(gs[1, 3]), "Late Deliveries", f"{(deliv['status'] == 'Delivered Late').sum()}", '#DC2626',
+              f"{deliv['status'].str.startswith('Pending').sum()} still pending")
+    _gauge(fig.add_subplot(gs[1, 4]), on_time_pct, 95, "Delivered on T+1")
+
+    # Row 3 left: route map (investor city -> NSE Mumbai)
+    ax_map = fig.add_subplot(gs[2, :3])
+    ex_name, ex_lat, ex_lon = EXCHANGE
+    routes = deliv.groupby(['from_city', 'region']).agg(
+        orders=('delivery_id', 'count'),
+        on_time=('status', lambda s: (s == 'Delivered On-Time (T+1)').sum() / max(1, s.str.startswith('Delivered').sum()) * 100)
     ).reset_index()
+    city_coords = {city: (lat, lon) for city, _, lat, lon in INVESTOR_CITIES.values()}
     cmap = plt.get_cmap('RdYlGn')
-    label_offsets = {'Pune': (0.5, -2.0, 'left'), 'Ahmedabad': (-0.6, 0.2, 'right'),
-                     'Hyderabad': (0.6, 0.4, 'left'), 'Chennai': (0.6, -1.0, 'left'),
-                     'Jamshedpur': (0, 0.8, 'center'), 'Kolkata': (0.4, -1.4, 'left')}
+    label_offsets = {'New Delhi': (0.6, 0.2, 'left'), 'Jaipur': (-0.6, 0.3, 'right'), 'Lucknow': (0.6, -0.2, 'left'),
+                     'Ahmedabad': (-0.6, 0.2, 'right'), 'Pune': (0.3, -1.7, 'center'), 'Hyderabad': (0.6, -0.2, 'left'),
+                     'Bengaluru': (-0.6, -0.9, 'right'), 'Chennai': (0.6, -0.3, 'left'), 'Kochi': (0.6, -0.6, 'left'),
+                     'Kolkata': (-0.4, 0.7, 'center')}
     for _, r in routes.iterrows():
-        _, _, lat, lon = PLANT_HUBS[r['origin_city']]
-        ax_map.annotate("", xy=(p_lon, p_lat), xytext=(lon, lat),
-                        arrowprops=dict(arrowstyle='-|>', color=cmap(r['on_time'] / 100), lw=1 + r['shipments'] / 6,
-                                        connectionstyle='arc3,rad=0.15', alpha=0.85))
-        ax_map.scatter(lon, lat, s=120, color='#1E3A8A', zorder=3)
-        dx, dy, ha = label_offsets.get(r['origin_city'], (0, 0.7, 'center'))
-        ax_map.text(lon + dx, lat + dy, f"{r['origin_city']}\n{r['shipments']} shipments, {r['on_time']:.0f}% on-time",
-                    ha=ha, fontsize=8.5)
-    ax_map.scatter(p_lon, p_lat, marker='*', s=500, color='#DC2626', edgecolors='black', zorder=4)
-    ax_map.text(p_lon - 1.1, p_lat + 0.6, port_name, fontsize=10, fontweight='bold', color='#991B1B', ha='right')
+        if r['from_city'] not in city_coords:
+            continue
+        lat, lon = city_coords[r['from_city']]
+        dx, dy, ha = label_offsets.get(r['from_city'], (0.5, 0.35, 'left'))
+        ax_map.annotate("", xy=(ex_lon, ex_lat), xytext=(lon, lat),
+                        arrowprops=dict(arrowstyle='-|>', color=cmap((r['on_time'] - 70) / 30), lw=1 + r['orders'] / 6,
+                                        connectionstyle='arc3,rad=0.12', alpha=0.85))
+        ax_map.scatter(lon, lat, s=140, color=REGION_COLORS[r['region']], edgecolors='white', zorder=3)
+        ax_map.text(lon + dx, lat + dy, f"{r['from_city']}\n{r['orders']} orders, {r['on_time']:.0f}% on time",
+                    fontsize=8, ha=ha, va='center')
+    ax_map.scatter(ex_lon, ex_lat, marker='*', s=550, color='#DC2626', edgecolors='black', zorder=4)
+    ax_map.text(ex_lon - 0.6, ex_lat - 1.1, ex_name, fontsize=10, fontweight='bold', color='#991B1B', ha='right')
+    ax_map.legend([plt.Line2D([], [], marker='o', ls='', color=c, markersize=9) for r_, c in REGION_COLORS.items() if r_ != 'Other'],
+                  [r_ for r_ in REGION_COLORS if r_ != 'Other'], title="Investor region", loc='lower right', fontsize=8)
     ax_map.set_xlim(66, 92)
-    ax_map.set_ylim(10, 31)
+    ax_map.set_ylim(7, 31)
     ax_map.set_aspect('equal')
     ax_map.set_xlabel("Longitude (°E)")
     ax_map.set_ylabel("Latitude (°N)")
-    ax_map.set_title("Route Map: Factory Hubs -> Export Port\n(arrow width = shipments, colour = on-time %: red low, green high)", fontweight='bold')
+    ax_map.set_title("Route Map: Orders from Investor Cities -> NSE Mumbai\n(arrow width = orders, colour = on-time %: red low, green high)", fontweight='bold')
 
-    # Row 2 right: delivery status by region (stacked bars)
-    ax_reg = fig.add_subplot(gs[1, 3:])
-    by_region = ship.groupby(['region', 'status']).size().unstack(fill_value=0).reindex(columns=status_order, fill_value=0)
+    # Row 3 right: delivery status by region (stacked bars)
+    ax_reg = fig.add_subplot(gs[2, 3:])
+    by_region = deliv.groupby(['region', 'status']).size().unstack(fill_value=0).reindex(columns=status_order, fill_value=0)
+    by_region = by_region.loc[by_region.sum(axis=1).sort_values().index]
     by_region.plot(kind='barh', stacked=True, ax=ax_reg, color=status_colors, edgecolor='white')
-    ax_reg.set_title("Delivery Status by Region", fontweight='bold')
-    ax_reg.set_xlabel("Shipments")
+    for i, (reg, row) in enumerate(by_region.iterrows()):
+        delivered_n = row.iloc[:2].sum()
+        pct = row.iloc[0] / delivered_n * 100 if delivered_n else 0
+        ax_reg.text(row.sum() + 1, i, f"{pct:.0f}% on time", va='center', fontsize=9, fontweight='bold')
+    ax_reg.set_xlim(0, by_region.sum(axis=1).max() * 1.35)
+    ax_reg.set_title("Delivery Status by Investor Region", fontweight='bold')
+    ax_reg.set_xlabel("Orders")
     ax_reg.set_ylabel("Region")
     ax_reg.legend(fontsize=8, loc='lower right')
+    _clean_axes(ax_reg)
 
-    # Row 3 has its own grid so the carrier names get room
-    row3 = gs[2, :].subgridspec(1, 3, wspace=0.45, width_ratios=[1.3, 0.9, 1.3])
+    # Row 4 has its own grid so long labels get room
+    row4 = gs[3, :].subgridspec(1, 3, wspace=0.6, width_ratios=[1.2, 1, 1.1])
 
-    # Row 3 left: monthly on-time % trend
-    ax_tr = fig.add_subplot(row3[0])
-    monthly = delivered.groupby('dispatch_month')['status'].apply(lambda s: (s == 'Delivered On-Time').mean() * 100)
+    # Row 4 left: monthly on-time % trend
+    ax_tr = fig.add_subplot(row4[0])
+    monthly = done.groupby('order_month')['status'].apply(lambda s: (s == 'Delivered On-Time (T+1)').mean() * 100)
     ax_tr.plot(monthly.index, monthly.values, marker='o', color='#0D9488', linewidth=2)
-    ax_tr.axhline(90, color='#1D4ED8', linestyle='--', linewidth=1, label='Target 90%')
-    ax_tr.set_ylim(0, 105)
+    ax_tr.axhline(95, color='#1D4ED8', linestyle='--', linewidth=1, label='Target 95%')
+    ax_tr.set_ylim(max(0, monthly.min() - 15), 102)
     ax_tr.set_ylabel("On-time %")
     _month_ticks(ax_tr, every=2)
     ax_tr.legend(fontsize=8)
-    ax_tr.set_title("Monthly On-Time Delivery %", fontweight='bold')
+    ax_tr.set_title("Monthly On-Time (T+1) Delivery %", fontweight='bold')
+    _clean_axes(ax_tr)
 
-    # Row 3 middle: average delay per carrier
-    ax_cr = fig.add_subplot(row3[1])
-    carrier = delivered.groupby('carrier')['delay_days'].mean().sort_values()
-    ax_cr.barh(carrier.index, carrier.values, color='#F59E0B')
-    ax_cr.set_xlabel("Average Delay (days)")
-    ax_cr.set_title("Average Delay by Carrier", fontweight='bold')
-    _clean_axes(ax_cr)
+    # Row 4 middle: broker report card
+    ax_br = fig.add_subplot(row4[1])
+    score = get_broker_scorecard(region).sort_values('on_time_pct')
+    grade_colors = {'A': '#16A34A', 'B': '#F59E0B', 'C': '#DC2626'}
+    bars = ax_br.barh(score['broker'], score['on_time_pct'], color=[grade_colors[g] for g in score['grade']])
+    for bar, (_, r) in zip(bars, score.iterrows()):
+        ax_br.text(r['on_time_pct'] + 0.5, bar.get_y() + bar.get_height() / 2, f"{r['on_time_pct']:.0f}%  Grade {r['grade']}",
+                   va='center', fontsize=8.5)
+    ax_br.axvline(95, color='#1D4ED8', linestyle='--', linewidth=1)
+    ax_br.set_xlim(max(0, score['on_time_pct'].min() - 15), 112)
+    ax_br.set_xlabel("On-time delivery (%)")
+    ax_br.set_title("Broker Report Card", fontweight='bold')
+    _clean_axes(ax_br)
 
-    # Row 3 right: the stock market link - logistics performance vs share price return
-    ax_lk = fig.add_subplot(row3[2])
-    score = get_company_logistics_scorecard(region)
-    ax_lk.scatter(score['on_time_pct'], score['return_1y'], s=score['shipments'] * 15,
-                  color=[SECTOR_PALETTE[s] for s in score['sector_name']], alpha=0.8, edgecolors='white')
-    for _, r in score.iterrows():
-        ax_lk.text(r['on_time_pct'], r['return_1y'], f" {r['symbol']}", fontsize=7)
-    if len(score) > 2:
-        fit = np.polyfit(score['on_time_pct'], score['return_1y'], 1)
-        xs = np.linspace(score['on_time_pct'].min(), score['on_time_pct'].max(), 10)
-        ax_lk.plot(xs, np.polyval(fit, xs), color='#111827', linestyle='--', linewidth=1)
-        r_val = np.corrcoef(score['on_time_pct'], score['return_1y'])[0, 1]
-        ax_lk.set_title(f"Stock Link: On-Time % vs 1-Year Share Return\n(r = {r_val:.2f}; bubble = shipments, colour = sector)", fontweight='bold')
-    ax_lk.axhline(0, color='#94A3B8', linewidth=0.8)
-    ax_lk.set_xlabel("On-time Delivery (%)")
-    ax_lk.set_ylabel("1-Year Stock Return (%)")
-    _clean_axes(ax_lk)
+    # Row 4 right: why deliveries were late
+    ax_rs = fig.add_subplot(row4[2])
+    reasons = deliv[deliv['delay_reason'] != '-']['delay_reason'].value_counts().sort_values()
+    if len(reasons):
+        ax_rs.barh([textwrap.fill(r, 18) for r in reasons.index], reasons.values, color='#F59E0B')
+        for i, v in enumerate(reasons.values):
+            ax_rs.text(v + 0.1, i, str(v), va='center', fontsize=9)
+    ax_rs.set_xlabel("Late orders")
+    ax_rs.set_title("Why Were Deliveries Late?", fontweight='bold')
+    _clean_axes(ax_rs)
 
-    fig.suptitle(f"Supply Chain & Logistics Dashboard - Export Shipments of Listed Manufacturers | Region filter: {region or 'All Regions'}",
-                 fontsize=15, fontweight='bold', y=0.95)
+    fig.suptitle(f"Supply Chain Case Study - Share Delivery Tracker (T+1 Settlement) | Region filter: {region or 'All Regions'}",
+                 fontsize=15, fontweight='bold', y=0.93)
     suffix = (region or 'all').lower()
-    return save_chart(f"supply_chain_dashboard_{suffix}.png", f"Supply Chain Dashboard ({region or 'All Regions'})", fig=fig)
+    return save_chart(f"supply_chain_dashboard_{suffix}.png", f"Share Delivery Dashboard ({region or 'All Regions'})", fig=fig)
 
 # ==============================================================================
 # SINGLE STOCK ANALYSIS CHART (used by main menu option 4: Search & Analyse)
@@ -1218,7 +1413,7 @@ CHART_MENU = [
     ("Unit 5", "Geospatial: Map Layers", plot_map_layers),
     ("Unit 5", "Geospatial: Choropleth Map", plot_choropleth_map),
     ("Unit 5", "Geospatial: Cartograms", plot_proportional_cartogram),
-    ("Case Study", "Supply Chain & Logistics Dashboard (All Regions)", plot_supply_chain_dashboard),
+    ("Case Study", "Supply Chain: Share Delivery Tracker (All Regions)", plot_supply_chain_dashboard),
 ]
 
 def generate_all_visualizations():

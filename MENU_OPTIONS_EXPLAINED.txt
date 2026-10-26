@@ -16,22 +16,23 @@ Is file me main menu ka har option explain kiya gaya hai:
 -------------------------------------------------------------------------------------
 PEHLE SAMJHO: 4 FILES AUR UNKA KAAM
 -------------------------------------------------------------------------------------
-  main.py            -> Menu, saare market operations (add/buy/sell/analyse...), KPI
-                        dashboard, supply chain, Excel export, command-line flags.
+  main.py            -> Menu, saare market operations (add/buy/sell/analyse...), market
+                        dashboard, share delivery tracker, Excel export, flags.
   db_setup.py        -> Database (stock_market.db) ke tables banata hai aur simulated
-                        market data bharta hai (prices, investors, trades, shipments).
+                        market data bharta hai (prices, investors, trades, deliveries).
   preprocessing.py   -> Database se data padhta hai, saaf (clean) karta hai, returns /
                         profit-loss / RSI nikalta hai, aur group/sum (aggregate) karta hai.
-  visualizations.py  -> Saare 26 charts + stock analysis candlestick chart banata hai
-                        aur charts/ folder me save karta hai.
+  visualizations.py  -> Saare 26 charts + market dashboard + stock analysis chart
+                        banata hai aur charts/ folder me save karta hai.
 
   Database file: stock_market.db (6 tables: sectors, stocks, price_history,
-  investors, trades, shipments)
+  investors, trades, deliveries)
 
   PURANE LIBRARY PROJECT SE MILAN:
     Department -> Sector | Book -> Stock | Student -> Investor
     Issue -> Buy | Return -> Sell | Due date -> Stop-loss | Fine -> Profit/Loss
     Overdue -> Stop-Loss Alerts | Student history -> Investor portfolio
+    Book shipments -> Share deliveries (investor ke demat account tak, T+1)
 
 
 -------------------------------------------------------------------------------------
@@ -40,17 +41,17 @@ MENU KHUD KAISE CHALTA HAI (program start se menu tak)
   Command:  python3 main.py
 
   1. main.py ka bottom block chalta hai
-       -> main.py, line 616:  if __name__ == "__main__":
+       -> main.py, line 729:  if __name__ == "__main__":
   2. parse_args() dekhta hai ki --all / --chart jaisa koi flag diya hai ya nahi
-       -> main.py, line 606:  def parse_args()
+       -> main.py, line 719:  def parse_args()
   3. check_db(): stock_market.db nahi hai to bana deta hai
        -> main.py, line 14:      def check_db()
-       -> db_setup.py, line 80:  def init_db()   (6 tables banata hai)
-       -> db_setup.py, line 249: def seed_db()   (sample data bharta hai)
+       -> db_setup.py, line 96:  def init_db()   (6 tables banata hai)
+       -> db_setup.py, line 266: def seed_db()   (sample data bharta hai)
   4. main_menu() ek "while True" loop chalata hai:
        menu print karo -> input() se number lo -> "actions" dictionary me us number
        ka function dhundo -> use call karo -> phir se menu dikhao
-       -> main.py, line 561:  def main_menu()
+       -> main.py, line 672:  def main_menu()
   5. Database connection har function me get_conn() se khulta hai
        -> main.py, line 21:   def get_conn()
   6. "Aaj ka price" har jagah _latest_price() se aata hai (price_history ka sabse
@@ -99,24 +100,24 @@ KAISE KAAM KARTA HAI:
 CODE KAHAN HAI:
   main.py, line 66:       def add_stock()
   main.py, line 32:       def _pick_sector()
-  db_setup.py, line 184:  def simulate_new_stock_history()
-  db_setup.py, line 174:  def build_ohlcv()   (returns -> Open/High/Low/Close/Volume)
+  db_setup.py, line 202:  def simulate_new_stock_history()
+  db_setup.py, line 192:  def build_ohlcv()   (returns -> Open/High/Low/Close/Volume)
 
 
 =====================================================================================
 OPTION 3. Remove / Delist Stock
 =====================================================================================
 KYA KARTA HAI:
-  Ek stock ko watchlist se poora hata deta hai (uske prices, trades, shipments ke
-  saath). Agar kisi investor ne wo share abhi tak becha nahi (open position) to
+  Ek stock ko watchlist se poora hata deta hai (uske prices, trades aur deliveries
+  ke saath). Agar kisi investor ne wo share abhi tak becha nahi (open position) to
   hatane nahi deta.
 
 KAISE KAAM KARTA HAI:
   1. Stock ID lo -> symbol, company dikhao.
   2. COUNT(*) aur COUNT(sell_date) se: total trades aur kitne abhi open hain.
   3. Open > 0 -> mana, "pehle Option 8 se sell karo".
-  4. Nahi to "y/n" confirm -> trades, price_history, shipments se us stock ki rows
-     DELETE, phir stocks se DELETE -> commit.
+  4. Nahi to "y/n" confirm -> us stock ke trades ki deliveries, phir trades aur
+     price_history ki rows DELETE, phir stocks se DELETE -> commit.
 
 CODE KAHAN HAI:
   main.py, line 105:  def remove_stock()
@@ -137,7 +138,7 @@ KYA KARTA HAI:
     - RSI (14): 70 se upar = overbought, 30 se neeche = oversold
     - SIGNAL: BULLISH / BEARISH / NEUTRAL
   Plus chart: charts/stock_analysis_<SYMBOL>.png (candlestick + moving averages +
-  volume + RSI) jo window me bhi khulta hai.
+  volume + RSI) jo Preview me khulta hai (menu chalta rehta hai).
 
 KAISE KAAM KARTA HAI:
   1. SQL ka LIKE '%keyword%' symbol, company aur sector naam teeno me dhundta hai.
@@ -153,9 +154,9 @@ KAISE KAAM KARTA HAI:
      (open-close body), green agar close >= open warna red.
 
 CODE KAHAN HAI:
-  main.py, line 146:             def search_and_analyse()
+  main.py, line 147:             def search_and_analyse()
   preprocessing.py, line 300:    def analyse_stock()
-  visualizations.py, line 1147:  def plot_stock_analysis()
+  visualizations.py, line 1342:  def plot_stock_analysis()
 
 
 =====================================================================================
@@ -163,14 +164,14 @@ OPTION 5. View Investor Directory
 =====================================================================================
 KYA KARTA HAI:
   Saare investors ki list: ID, Naam, Risk Profile (Conservative / Moderate / Growth
-  / Aggressive), Home State, kitne trades kiye, total profit/loss.
+  / Aggressive), Home State, Broker, kitne trades kiye, total profit/loss.
 
 KAISE KAAM KARTA HAI:
   preprocessing.get_investor_summary() -> investors table + har investor ke trades
   ka groupby (count, P&L sum) -> investor_id ke order me print.
 
 CODE KAHAN HAI:
-  main.py, line 195:           def view_investors()
+  main.py, line 196:           def view_investors()
   preprocessing.py, line 258:  def get_investor_summary()
 
 
@@ -178,15 +179,19 @@ CODE KAHAN HAI:
 OPTION 6. Add New Investor
 =====================================================================================
 KYA KARTA HAI:
-  Naya investor register karta hai: Naam, Risk Profile (1-4), Home State.
+  Naya investor register karta hai: Naam, Risk Profile (1-4), Home State aur
+  Broker (Zerodha, Groww, Upstox, Angel One, ICICI Direct - jahan uska demat /
+  trading account hai).
 
 KAISE KAAM KARTA HAI:
   Input lekar INSERT INTO investors (...). Risk 1-4 ke bahar ho to error. Home state
-  khaali ho to "Maharashtra". Naya investor_id database khud deta hai
-  (AUTOINCREMENT) aur screen pe dikhata hai.
+  khaali ho to "Maharashtra", broker khaali ho to "Zerodha". Naya investor_id
+  database khud deta hai (AUTOINCREMENT) aur screen pe dikhata hai.
+  Home state se pata chalta hai investor kis REGION ka hai (Option 15).
 
 CODE KAHAN HAI:
-  main.py, line 208:  def add_investor()
+  main.py, line 209:     def add_investor()
+  db_setup.py, line 85:  BROKERS = [...]
 
 
 =====================================================================================
@@ -194,7 +199,8 @@ OPTION 7. Buy a Stock (Auto 8% stop-loss)
 =====================================================================================
 KYA KARTA HAI:
   Investor ke liye shares kharidta hai. Buy price = aaj ka market price. Stop-loss
-  apne-aap buy price se 8% neeche set hota hai.
+  apne-aap buy price se 8% neeche set hota hai. Saath me share DELIVERY shuru hoti
+  hai: shares agle trading din (T+1) demat account me aayenge.
 
 KAISE KAAM KARTA HAI:
   1. Investor ID, Stock ID, Quantity lo. Quantity 1 se kam -> error.
@@ -204,11 +210,16 @@ KAISE KAAM KARTA HAI:
      stop_loss = buy_price x (1 - 0.08)      (STOP_LOSS_PCT = 0.08, db_setup.py)
   4. INSERT INTO trades (buy_date = aaj, sell_date = NULL, sell_price = NULL)
      -> sell_date NULL ka matlab "position abhi open hai".
-  5. commit -> "Trade #ID ... bought ... Investment ... stop-loss" print.
+  5. db_setup.create_delivery(): deliveries table me ek row - expected date = T+1
+     (agla trading din), delivery_date = NULL ("Pending"). Isliye ye order turant
+     Option 15 me dikhne lagta hai.
+  6. commit -> "Trade #ID ... bought ... stop-loss ... Delivery on <date>" print.
 
 CODE KAHAN HAI:
-  main.py, line 242:     def buy_stock()
-  db_setup.py, line 11:  STOP_LOSS_PCT = 0.08
+  main.py, line 248:      def buy_stock()
+  db_setup.py, line 11:   STOP_LOSS_PCT = 0.08
+  db_setup.py, line 230:  def create_delivery()
+  db_setup.py, line 188:  def next_trading_day()   (T+1 = agla weekday)
 
 
 =====================================================================================
@@ -229,7 +240,7 @@ KAISE KAAM KARTA HAI:
   6. pnl > 0 -> "PROFIT BOOKED", pnl = 0 -> "BREAK-EVEN", warna "LOSS BOOKED".
 
 CODE KAHAN HAI:
-  main.py, line 289:  def sell_stock()
+  main.py, line 298:  def sell_stock()
 
 
 =====================================================================================
@@ -247,7 +258,7 @@ KAISE KAAM KARTA HAI:
   3. Sirf stop_loss_hit == True wali rows, return_pct ke order me print.
 
 CODE KAHAN HAI:
-  main.py, line 342:           def view_stop_loss_alerts()
+  main.py, line 351:           def view_stop_loss_alerts()
   preprocessing.py, line 103:  def get_cleaned_trades()   (pnl/status/stop-loss calculation)
 
 
@@ -266,7 +277,7 @@ KAISE KAAM KARTA HAI:
   open/closed alag karke sum.
 
 CODE KAHAN HAI:
-  main.py, line 362:           def investor_portfolio()
+  main.py, line 371:           def investor_portfolio()
   preprocessing.py, line 103:  def get_cleaned_trades()
 
 
@@ -309,8 +320,10 @@ OPTION 12. Data Visualization Menu (Unit 1 - Unit 5)    [SYLLABUS: Unit 1-5 + Ca
 =====================================================================================
 KYA KARTA HAI:
   Ek submenu kholta hai jisme 26 charts unit-wise listed hain. Number daalo ->
-  chart banta hai, charts/ folder me PNG save hota hai, aur ek window me khulta hai
-  (zoom/pan/save buttons ke saath). Window band karo -> submenu wapas.
+  chart banta hai, charts/ folder me PNG save hota hai, aur Mac ke Preview app me
+  khul jaata hai (zoom ke liye Cmd + / Cmd -). Menu turant wapas aa jaata hai -
+  Preview window band karo ya na karo, program chalta rehta hai.
+  Chart 5 (interactive) ek alag Python window me khulta hai (hover/checkbox/slider).
   "A" = saare charts ek saath, "0" = main menu pe wapas.
 
 KAISE KAAM KARTA HAI:
@@ -318,45 +331,61 @@ KAISE KAAM KARTA HAI:
      ke saath numbered list print karta hai.
   2. run_chart(N) -> CHART_MENU[N-1] ka function call karta hai.
   3. Har chart function: preprocessing se data -> matplotlib/seaborn se plot ->
-     save_chart() -> PNG save + window show + memory clear.
+     save_chart() -> PNG save -> open_in_viewer() (Preview me kholo) -> memory clear.
+
+  PROGRAM KABHI ACHANAK BAND KYUN NAHI HOTA:
+    - Menu wala program khud koi matplotlib window nahi kholta (backend 'Agg' =
+      off-screen drawing). Pehle macOS pe chart window ko Cmd+Q / Quit karne se
+      POORA program band ho jaata tha. Ab chart Preview (alag app) me khulta hai.
+    - Interactive chart 5: open_live_window() use ALAG Python process me chalata
+      hai (environment DV_LIVE_WINDOW=1). Us window ko Quit karo -> sirf wo process
+      band, menu chalta rehta hai.
+    - run_safely(): har menu option try/except me chalta hai -> koi error aaye to
+      message dikhta hai aur menu wapas aata hai.
+    - safe_input(): Ctrl+C dabao to sirf current sawaal cancel, program nahi.
+    - Program SIRF option 0 (Exit) se band hota hai.
 
 CODE KAHAN HAI:
-  main.py, line 537:            def visualization_menu()
-  main.py, line 522:            def print_chart_list()
-  main.py, line 530:            def run_chart(number)
-  visualizations.py, line 1195: CHART_MENU = [...]   (number -> chart function list)
-  visualizations.py, line 59:   def save_chart()     (save + show helper)
+  main.py, line 646:            def visualization_menu()
+  main.py, line 607:            def print_chart_list()
+  main.py, line 615:            def run_chart(number)
+  visualizations.py, line 1390: CHART_MENU = [...]   (number -> chart function list)
+  visualizations.py, line 84: def save_chart()     (save + show helper)
+  visualizations.py, line 64: def open_in_viewer() (PNG ko Preview me kholta hai)
+  visualizations.py, line 76: def open_live_window() (chart 5 alag process me)
+  main.py, line 633:           def run_safely()     (error aaye to bhi menu chalta rahe)
+  main.py, line 622:           def safe_input()     (Ctrl+C se band na ho)
 
   26 CHARTS - FUNCTION AUR LINE (sab visualizations.py me):
   ---------------------------------------------------------------------------------
    #  Unit     Chart                                        Function (line)
   ---------------------------------------------------------------------------------
-   1  Unit 1   Design Principles (bad 3D vs clean bar)      plot_design_principles_demo (128)
-   2  Unit 1   Categorical / Time Series / Statistical      plot_data_graphic_types (165)
-   3  Unit 2   Pairplot (stock risk & return)               plot_stock_pairplot (203)
-   4  Unit 2   Heatmap (sector x month return)              plot_monthly_return_heatmap (215)
-   5  Unit 2   Interactive Explorer (hover/filter/slider)   plot_interactive_explorer (229)
-   6  Unit 2   Graphical Perception                         plot_graphical_perception (295)
-   7  Unit 2   Grammar of Graphics + Scales                 plot_grammar_of_graphics (342)
-   8  Unit 3   Bar Plot: sector 1Y return                   plot_sector_returns_bar (405)
-   9  Unit 3   Horizontal Bar: most traded stocks           plot_most_traded_stocks (427)
-  10  Unit 3   Cleveland Dot Plot: return of every stock    plot_cleveland_dot_plot (449)
-  11  Unit 3   Grouped & Stacked Bars: trade outcome        plot_trade_outcome_grouped_stacked (472)
-  12  Unit 3   Histogram+KDE, Overlaid KDE, Violin          plot_return_distributions (496)
-  13  Unit 3   ECDF, Q-Q, Skewed & Log                      plot_statistical_diagnostics (528)
-  14  Unit 4   Box/Strip (vertical) vs Ridgeline            plot_vertical_vs_horizontal_layouts (569)
-  15  Unit 4   Pie / Side-by-side / Stacked / Densities     plot_proportions (601)
-  16  Unit 4   Parts of the Total                           plot_parts_of_total (646)
-  17  Unit 4   Treemap + Nested Donut                       plot_nested_proportions (670)
-  18  Unit 4   Scatter, Correlogram, PCA                    plot_associations_and_pca (703)
-  19  Unit 4   Paired Slope Chart                           plot_paired_slope_chart (746)
-  20  Unit 5   Time Series, Smoothing, Functional Form      plot_time_series_and_trends (773)
-  21  Unit 5   Dose-Response, Multi-Resp, Detrend, Decomp   plot_advanced_time_series (825)
-  22  Unit 5   Map Projections                              plot_map_projections (894)
-  23  Unit 5   Map Layers                                   plot_map_layers (925)
-  24  Unit 5   Choropleth (tile map)                        plot_choropleth_map (976)
-  25  Unit 5   Cartograms                                   plot_proportional_cartogram (991)
-  26  Case St. Supply Chain Dashboard                       plot_supply_chain_dashboard (1039)
+   1  Unit 1   Design Principles (bad 3D vs clean bar)      plot_design_principles_demo (163)
+   2  Unit 1   Categorical / Time Series / Statistical      plot_data_graphic_types (200)
+   3  Unit 2   Pairplot (stock risk & return)               plot_stock_pairplot (238)
+   4  Unit 2   Heatmap (sector x month return)              plot_monthly_return_heatmap (250)
+   5  Unit 2   Interactive Explorer (hover/filter/slider)   plot_interactive_explorer (264)
+   6  Unit 2   Graphical Perception                         plot_graphical_perception (331)
+   7  Unit 2   Grammar of Graphics + Scales                 plot_grammar_of_graphics (378)
+   8  Unit 3   Bar Plot: sector 1Y return                   plot_sector_returns_bar (441)
+   9  Unit 3   Horizontal Bar: most traded stocks           plot_most_traded_stocks (463)
+  10  Unit 3   Cleveland Dot Plot: return of every stock    plot_cleveland_dot_plot (485)
+  11  Unit 3   Grouped & Stacked Bars: trade outcome        plot_trade_outcome_grouped_stacked (508)
+  12  Unit 3   Histogram+KDE, Overlaid KDE, Violin          plot_return_distributions (532)
+  13  Unit 3   ECDF, Q-Q, Skewed & Log                      plot_statistical_diagnostics (564)
+  14  Unit 4   Box/Strip (vertical) vs Ridgeline            plot_vertical_vs_horizontal_layouts (605)
+  15  Unit 4   Pie / Side-by-side / Stacked / Densities     plot_proportions (637)
+  16  Unit 4   Parts of the Total                           plot_parts_of_total (682)
+  17  Unit 4   Treemap + Nested Donut                       plot_nested_proportions (706)
+  18  Unit 4   Scatter, Correlogram, PCA                    plot_associations_and_pca (739)
+  19  Unit 4   Paired Slope Chart                           plot_paired_slope_chart (782)
+  20  Unit 5   Time Series, Smoothing, Functional Form      plot_time_series_and_trends (809)
+  21  Unit 5   Dose-Response, Multi-Resp, Detrend, Decomp   plot_advanced_time_series (861)
+  22  Unit 5   Map Projections                              plot_map_projections (930)
+  23  Unit 5   Map Layers                                   plot_map_layers (961)
+  24  Unit 5   Choropleth (tile map)                        plot_choropleth_map (1012)
+  25  Unit 5   Cartograms                                   plot_proportional_cartogram (1027)
+  26  Case St. Share Delivery Tracker                       plot_supply_chain_dashboard (1217)
   ---------------------------------------------------------------------------------
 
   In charts ka data kahan se aata hai (preprocessing.py):
@@ -371,7 +400,7 @@ CODE KAHAN HAI:
     get_monthly_stock_returns (228)   -> monthly return per stock (box/ridgeline)
     get_stock_return_matrix (277)     -> dates x stocks returns (PCA)
     get_state_geospatial_summary (284)-> state-wise investors & traded value (maps)
-    get_cleaned_shipments (414)       -> shipments with status (case study)
+    get_cleaned_deliveries (440)      -> share deliveries with T+1 status (case study)
 
   Shortcut commands:
     python3 main.py --list       (list)
@@ -391,91 +420,137 @@ KAISE KAAM KARTA HAI:
   3. End me windows ki setting wapas pehle jaisi.
 
 CODE KAHAN HAI:
-  visualizations.py, line 1224: def generate_all_visualizations()
-  visualizations.py, line 42:   def set_show_windows(flag)
+  visualizations.py, line 1419: def generate_all_visualizations()
+  visualizations.py, line 57:   def set_show_windows(flag)
   Shortcut command: python3 main.py --all
 
 
 =====================================================================================
-OPTION 14. KPI Dashboard (Cards, KPI, Gauge, Slicers, Drill-down)   [SYLLABUS: Unit 6 Power BI]
+OPTION 14. Market Dashboard (KPI Cards, Gauge, Slicers, Drill-down)   [SYLLABUS: Unit 6 Power BI]
 =====================================================================================
+YE OPTION KYUN HAI:
+  Syllabus Unit 6 (Power BI) me Cards, KPIs, Gauges, Slicers, Drill-down maange gaye
+  hain. Ye option wahi sab ek "Market Dashboard" page me dikhata hai jo 2 sawaalon
+  ka jawab deta hai:
+    1. Market aaj kaisa chal raha hai?
+    2. Investors paisa bana rahe hain ya nahi?
+  Har number ke neeche "->" wali line uska simple matlab batati hai.
+
 KYA KARTA HAI:
-  Power BI dashboard ke concepts terminal me dikhata hai:
-    SLICER     -> pehle sector (0 = All) aur investor risk profile (0 = All) chuno.
-    CARDS      -> Stocks, Investors, Trades, Open Positions, Invested (open),
-                  Current value, Unrealised P&L, Realised P&L.
-    KPI        -> Is mahine ke trades vs pichle mahine (badha to ▲, ghata to ▼),
-                  Win rate vs target 55%, Stop-loss alerts.
-    GAUGE      -> Market breadth % (kitne stocks apne 50-day average se upar) ek
-                  text bar me: [#################-------------] 55.6%
-    DRILL-DOWN -> Level 1: sector-wise average 1Y return (█ = plus, ░ = minus).
-                  Sector ka naam type karo -> Level 2: us sector ke stocks.
+    [SLICER]     -> pehle sector (0 = All) aur investor type / risk profile
+                    (0 = All) chuno. Aage ke saare numbers isi filter pe bante hain.
+    MARKET MOOD  -> BULLISH / NEUTRAL / BEARISH
+    [GAUGE]      -> Kitne % stocks uptrend me hain (price > 50-day average):
+                    [###################-----------] 63.9%
+                    60%+ = BULLISH, 40-60% = NEUTRAL, 40% se kam = BEARISH
+    [CARDS]      -> Stocks, investors, orders, shares still held (kitne me kharide,
+                    aaj kitne ke), Unrealised P&L (kaagzi profit), Realised P&L
+                    (bech ke kamaya).
+    [KPI]        -> Is mahine ke orders vs pichle mahine (▲ / ▼), Win rate vs
+                    target 55% (ON TARGET / BELOW TARGET), stop-loss alerts.
+    TOP MOVERS   -> Aaj ke Top 5 Gainers aur Top 5 Losers (1-day % change).
+    [DRILL-DOWN] -> Level 1: sector-wise 1-year return (█ plus, ░ minus).
+                    Sector ka naam type karo -> Level 2: us sector ke stocks.
+    CHART        -> charts/market_dashboard_<sector>_<investor type>.png
+                    (Power BI page jaisa: 4 cards + gauge, top movers bar,
+                    drill-down bar, monthly orders KPI, profit by investor type)
 
 KAISE KAAM KARTA HAI:
-  1. Slicer inputs -> get_market_kpis(sector, risk) filter lagake saare numbers
-     calculate karta hai (current month = aaj ka mahina).
-  2. _text_gauge() percentage ko # aur - wali bar me badalta hai.
-  3. Drill-down get_stock_summary() par groupby('sector_name') se.
+  1. Slicer inputs -> get_market_kpis(sector, risk) filter lagake saare numbers.
+  2. market_mood(breadth) -> BULLISH / NEUTRAL / BEARISH + ek line ka matlab.
+  3. get_top_movers(5) -> get_stock_summary() ko change_1d se sort.
+  4. _text_gauge() percentage ko # aur - wali bar me badalta hai; _meaning() "->"
+     wali explanation line print karta hai.
+  5. Drill-down get_stock_summary() par groupby('sector_name').
+  6. plot_market_dashboard(sector, risk) -> dashboard image.
 
 CODE KAHAN HAI:
-  main.py, line 418:           def kpi_dashboard()
-  main.py, line 414:           def _text_gauge()
-  preprocessing.py, line 383:  def get_market_kpis()
+  main.py, line 430:             def kpi_dashboard()
+  main.py, line 423:             def _text_gauge()
+  main.py, line 427:             def _meaning()
+  preprocessing.py, line 383:    def get_market_kpis()
+  preprocessing.py, line 424:    def get_top_movers()
+  preprocessing.py, line 432:    def market_mood()
+  preprocessing.py, line 414:    def format_inr()   (Rs 1.37 Cr / Rs 15.1 L)
+  visualizations.py, line 1080:  def plot_market_dashboard()
+  visualizations.py, line 1053:  def _kpi_card()   (card box)
+  visualizations.py, line 1061:  def _gauge()      (semicircle gauge)
   Power BI me yahi cheez kaise banayein: POWERBI_GUIDE.md (Section 4 & 5)
 
 
 =====================================================================================
-OPTION 15. Supply Chain & Logistics Case Study (Region filter)   [SYLLABUS: Self-study Case Study]
+OPTION 15. Supply Chain Case Study: Share Delivery Tracker (Region filter)   [SYLLABUS: Self-study Case Study]
 =====================================================================================
 YE OPTION KYUN HAI:
   Syllabus ki self-study case study "Supply Chain & Logistics Dashboard" maangti
-  hai (shipment logs, route mapping, delivery KPIs, filtering by region). Isko stock
-  market se joda gaya hai: watchlist ki manufacturing companies (Pharma, Auto,
-  FMCG) apni factory se maal JNPT port (Navi Mumbai) bhejti hain. Sawaal: "Jo
-  company time pe deliver karti hai, kya uska share bhi achha chalta hai?"
+  hai (shipment logs, route mapping, delivery status KPIs, filtering by region).
+  Stock market ki apni supply chain hai: jab investor share KHARIDTA hai, to share
+  ek parcel ki tarah uske DEMAT account tak "deliver" hota hai:
+
+    Investor -> Broker -> NSE Mumbai -> Clearing Corp -> Depository -> Demat account
+    (order)    (Zerodha)  (buyer+seller  (NSE Clearing    (CDSL/NSDL    (shares
+                           match)         settles)         move them)    arrive)
+
+  India me rule: shares T+1 pe aane chahiye (T = order ka din, T+1 = agla trading
+  din). Usse late = LATE delivery.
+
+  PARCEL WORD  ->  STOCK MARKET WORD
+    shipment       = ek buy order (deliveries table ki ek row)
+    courier        = broker (Zerodha, Groww, Upstox, Angel One, ICICI Direct)
+    route          = investor ka shehar -> NSE Mumbai
+    delivered      = shares demat account me aa gaye
+    region         = investor kahan rehta hai (North / West / South / East)
 
 KYA KARTA HAI:
-    1. Region chuno: 0 All, 1 North, 2 West, 3 South, 4 East  (= filtering by region)
-    2. Terminal me: shipments, containers, freight cost, on-time delivery gauge
-       (target 90%), average transit days.
-    3. DELIVERY STATUS KPIs: Delivered On-Time / Delivered Late / In Transit /
-       Delayed In Transit (count aur %).
-    4. ROUTES table: har factory city -> km, shipments, avg days, late count
-       (= route mapping, table form me).
-    5. COMPANY SCORECARD: har company ka on-time %, avg delay aur 1-year share
-       return + correlation r (positive = time pe deliver karne wale ka share zyada
-       badha).
-    6. Dashboard image banta hai: charts/supply_chain_dashboard_<region>.png
-       (KPI cards, gauge, route map arrows, status by region, monthly on-time trend,
-        carrier delay, on-time % vs share return scatter) aur window me khulta hai.
+    0. Upar kahani + chain dikhata hai, phir har region ke shehar:
+         North = New Delhi, Lucknow, Jaipur | West = Pune, Ahmedabad
+         South = Bengaluru, Chennai, Kochi, Hyderabad | East = Kolkata
+       Region chuno (0 = All)  (= filtering by region / Power BI slicer)
+    STEP 1 DELIVERY KPIs: orders + value, shares delivered, % delivered on T+1
+           (gauge, target 95%), late / pending, average days to demat.
+    STEP 2 ROUTES table: har shehar -> km to NSE, orders, on-time %, late
+           (= route mapping).
+    STEP 3 BROKER REPORT CARD: har broker ka on-time %, late, avg days, grade
+           A (95%+) / B (88-95%) / C (88% se kam).
+    STEP 4 WHY LATE?: delay reasons - funds late, seller short delivery ->
+           auction, bank/settlement holiday, demat/KYC mismatch.
+    INVESTOR TAKEAWAY: 3 simple lines (kitne % on time, kaunsa broker best,
+           sabse common delay se kaise bachein).
+    CHART: charts/supply_chain_dashboard_<region>.png - upar 6-step chain diagram,
+           KPI cards + gauge, route map (city -> NSE), status by region, monthly
+           on-time trend, broker report card, delay reasons.
 
 KAISE KAAM KARTA HAI:
-  1. get_cleaned_shipments(region): shipments + stocks + sectors JOIN,
-       transit_days = delivery (ya aaj) - dispatch
-       delay_days   = delivery (ya aaj) - expected, minimum 0
-       status       = upar ke 4 me se ek
+  1. get_cleaned_deliveries(region): deliveries + trades + investors + stocks JOIN,
+       settle_days = order date se delivery (ya aaj) tak TRADING days (weekend nahi)
+       delay_days  = expected (T+1) se delivery (ya aaj) tak, minimum 0
+       status      = Delivered On-Time (T+1) / Delivered Late /
+                     Pending (in settlement) / Pending - Delayed
      phir region filter.
-  2. groupby('origin_city') se routes table.
-  3. get_company_logistics_scorecard(): company-wise on-time % + get_stock_summary()
-     ka return_1y.
-  4. plot_supply_chain_dashboard(region) gridspec se 3-row dashboard banata hai.
+  2. groupby('from_city') se routes table.
+  3. get_broker_scorecard(region) -> broker-wise on-time % + grade.
+  4. plot_supply_chain_dashboard(region) -> 4-row dashboard image.
 
-  Shipment data kahan se aaya:
-    db_setup.seed_shipments() 180 shipments banata hai. Distance haversine_km() se
-    (latitude/longitude se asli doori). Expected days = distance/450 + 1.
-    CONCOR Rail, lambi doori aur kam "quality" wali company pe delay ka chance
-    zyada. Wahi quality share price ki drift me bhi hai -> isliye link dikhta hai.
+  Delivery data kahan se aaya:
+    db_setup.seed_deliveries() har buy trade ke liye ek delivery record banata hai.
+    Expected date = next_trading_day(buy date) = T+1. Har broker ka late hone ka
+    chance alag (Zerodha 5% ... ICICI Direct 15%, BROKER_DELAY_RATE). Late ho to
+    DELAY_REASONS me se ek reason aur 1-4 din extra. Delivery date aaj ke baad aaye
+    to NULL (abhi pending). Naya buy (Option 7) bhi create_delivery() se yahan aata
+    hai. Distance (km) sirf route map ke liye hai - digital share pe doori se
+    farak nahi padta, delay broker aur paperwork se hota hai.
 
 CODE KAHAN HAI:
-  main.py, line 470:             def supply_chain_case_study()
-  preprocessing.py, line 414:    def get_cleaned_shipments()
-  preprocessing.py, line 444:    def get_company_logistics_scorecard()
-  visualizations.py, line 1039:  def plot_supply_chain_dashboard()
-  visualizations.py, line 1018:  def _kpi_card()   (card box)
-  visualizations.py, line 1024:  def _gauge()      (semicircle gauge)
-  db_setup.py, line 207:         def seed_shipments()
-  db_setup.py, line 199:         def haversine_km()
-  db_setup.py, line 68-78:       PLANT_HUBS, PORT_LOCATION, CARRIERS (city list)
+  main.py, line 515:             def supply_chain_case_study()
+  preprocessing.py, line 440:    def get_cleaned_deliveries()
+  preprocessing.py, line 476:    def get_broker_scorecard()
+  visualizations.py, line 1217:  def plot_supply_chain_dashboard()
+  visualizations.py, line 1193:  def _draw_pipeline()   (6-step chain diagram)
+  db_setup.py, line 239:         def seed_deliveries()
+  db_setup.py, line 230:         def create_delivery()
+  db_setup.py, line 225:         def order_route()      (city, region, km to NSE)
+  db_setup.py, line 72-94:       INVESTOR_CITIES, EXCHANGE, BROKERS,
+                                 BROKER_DELAY_RATE, DELAY_REASONS
 
 
 =====================================================================================
@@ -483,7 +558,7 @@ OPTION 16. Export Dataset for Power BI (stock_market_export.xlsx)   [SYLLABUS: U
 =====================================================================================
 KYA KARTA HAI:
   Database ke 6 tables ko ek Excel file stock_market_export.xlsx me 6 alag sheets
-  me likhta hai: sectors, stocks, investors, price_history, trades, shipments.
+  me likhta hai: sectors, stocks, investors, price_history, trades, deliveries.
   Ye file Power BI Desktop me "Get Data -> Excel Workbook" se load hoti hai.
 
 KAISE KAAM KARTA HAI:
@@ -491,7 +566,7 @@ KAISE KAAM KARTA HAI:
   (engine = openpyxl) -> har DataFrame ko to_excel(sheet_name=...) se alag sheet.
 
 CODE KAHAN HAI:
-  main.py, line 388:  def export_for_power_bi()
+  main.py, line 397:  def export_for_power_bi()
   Shortcut command: python3 main.py --export
   Power BI steps: POWERBI_GUIDE.md
 
@@ -500,12 +575,13 @@ CODE KAHAN HAI:
 OPTION 0. Exit
 =====================================================================================
 KYA KARTA HAI:
-  "Thank you ... Goodbye!" print karke program band (sys.exit(0)).
+  "Thank you ... Goodbye!" print karke program band (sys.exit(0)). Ye program band
+  karne ka EKLAUTA tareeka hai - charts, errors ya Ctrl+C se menu band nahi hota.
   Sab data pehle hi har operation ke baad stock_market.db me save (commit) ho chuka
   hota hai, isliye exit pe kuch khota nahi.
 
 CODE KAHAN HAI:
-  main.py, line 561:  def main_menu()   (choice == '0' wala hissa)
+  main.py, line 672:  def main_menu()   (choice == '0' wala hissa)
 
 
 =====================================================================================
@@ -523,7 +599,8 @@ QUICK REFERENCE: OPTION -> FILE -> FUNCTION
                                    visualizations.py   plot_stock_analysis
     5   Investors dekhna           main.py             view_investors
     6   Investor add               main.py             add_investor
-    7   Stock buy                  main.py             buy_stock
+    7   Stock buy (+ delivery)     main.py             buy_stock
+                                   db_setup.py         create_delivery
     8   Stock sell + P&L           main.py             sell_stock
     9   Stop-loss alerts           main.py             view_stop_loss_alerts
                                    preprocessing.py    get_cleaned_trades
@@ -532,10 +609,11 @@ QUICK REFERENCE: OPTION -> FILE -> FUNCTION
    12   Charts menu (26 charts)    main.py             visualization_menu
                                    visualizations.py   CHART_MENU + plot_* functions
    13   Saare charts               visualizations.py   generate_all_visualizations
-   14   KPI dashboard              main.py             kpi_dashboard
-                                   preprocessing.py    get_market_kpis
-   15   Supply chain               main.py             supply_chain_case_study
-                                   preprocessing.py    get_cleaned_shipments
+   14   Market dashboard           main.py             kpi_dashboard
+                                   preprocessing.py    get_market_kpis, market_mood
+                                   visualizations.py   plot_market_dashboard
+   15   Share delivery tracker     main.py             supply_chain_case_study
+                                   preprocessing.py    get_cleaned_deliveries
                                    visualizations.py   plot_supply_chain_dashboard
    16   Excel export               main.py             export_for_power_bi
     0   Exit                       main.py             main_menu

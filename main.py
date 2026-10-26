@@ -87,8 +87,8 @@ def add_stock():
 
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO stocks (symbol, company_name, sector_id, hq_state, plant_city)
-            VALUES (?, ?, ?, ?, NULL);
+            INSERT INTO stocks (symbol, company_name, sector_id, hq_state)
+            VALUES (?, ?, ?, ?);
         """, (symbol, company, sector_id, hq_state))
         # A new listing needs history for the charts: simulate one year that ends at today's price
         db_setup.simulate_new_stock_history(conn, cursor.lastrowid, sector_name, price)
@@ -132,7 +132,8 @@ def remove_stock():
         else:
             confirm = input(f"Permanently remove {symbol} with its price history and trades? (y/n): ").strip().lower()
             if confirm == 'y':
-                for table in ["trades", "price_history", "shipments"]:
+                cursor.execute("DELETE FROM deliveries WHERE trade_id IN (SELECT trade_id FROM trades WHERE stock_id = ?);", (stock_id,))
+                for table in ["trades", "price_history"]:
                     cursor.execute(f"DELETE FROM {table} WHERE stock_id = ?;", (stock_id,))
                 cursor.execute("DELETE FROM stocks WHERE stock_id = ?;", (stock_id,))
                 conn.commit()
@@ -195,15 +196,15 @@ def search_and_analyse():
 def view_investors():
     summary = preprocessing.get_investor_summary().sort_values('investor_id')
 
-    print("\n" + "="*88)
-    print("                               INVESTOR DIRECTORY")
-    print("="*88)
-    print(f"{'ID':<5} | {'Investor Name':<25} | {'Risk Profile':<13} | {'Home State':<14} | {'Trades':>6} | {'Total P&L (Rs)':>14}")
-    print("-"*88)
+    print("\n" + "="*102)
+    print("                                      INVESTOR DIRECTORY")
+    print("="*102)
+    print(f"{'ID':<5} | {'Investor Name':<25} | {'Risk Profile':<13} | {'Home State':<14} | {'Broker':<12} | {'Trades':>6} | {'Total P&L (Rs)':>14}")
+    print("-"*102)
     for _, r in summary.iterrows():
-        print(f"{r['investor_id']:<5} | {r['name'][:25]:<25} | {r['risk_label']:<13} | {r['home_state']:<14} | "
+        print(f"{r['investor_id']:<5} | {r['name'][:25]:<25} | {r['risk_label']:<13} | {r['home_state']:<14} | {r['broker']:<12} | "
               f"{int(r['total_trades']):>6} | {r['total_pnl']:>+14,.0f}")
-    print("="*88 + "\n")
+    print("="*102 + "\n")
 
 def add_investor():
     print("\n" + "-"*40)
@@ -226,14 +227,19 @@ def add_investor():
         home_state = input("Enter Home State (e.g. Maharashtra, Karnataka): ").strip()
         if not home_state:
             home_state = "Maharashtra"
+        print("\nBroker (where the investor has a demat/trading account):")
+        for i, b in enumerate(db_setup.BROKERS, 1):
+            print(f"  {i}. {b}")
+        b_choice = input("Select Broker (1-5, Enter = Zerodha): ").strip()
+        broker = db_setup.BROKERS[int(b_choice) - 1] if b_choice in ('1', '2', '3', '4', '5') else "Zerodha"
 
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO investors (name, risk_profile, home_state)
-            VALUES (?, ?, ?);
-        """, (name, risk, home_state))
+            INSERT INTO investors (name, risk_profile, home_state, broker)
+            VALUES (?, ?, ?, ?);
+        """, (name, risk, home_state, broker))
         conn.commit()
-        print(f"\n [✓] Successfully registered investor '{name}' (ID {cursor.lastrowid}, {db_setup.RISK_PROFILES[risk]}).")
+        print(f"\n [✓] Successfully registered investor '{name}' (ID {cursor.lastrowid}, {db_setup.RISK_PROFILES[risk]}, broker {broker}).")
     except Exception as e:
         print(f" [!] Error adding investor: {e}")
     finally:
@@ -254,7 +260,7 @@ def buy_stock():
         conn = get_conn()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT name FROM investors WHERE investor_id = ?;", (investor_id,))
+        cursor.execute("SELECT name, home_state, broker FROM investors WHERE investor_id = ?;", (investor_id,))
         i_row = cursor.fetchone()
         if not i_row:
             print(" [!] Error: Investor ID not found.")
@@ -276,13 +282,16 @@ def buy_stock():
             INSERT INTO trades (stock_id, investor_id, buy_date, buy_price, quantity, stop_loss, sell_date, sell_price)
             VALUES (?, ?, ?, ?, ?, ?, NULL, NULL);
         """, (stock_id, investor_id, buy_str, price, quantity, stop_loss))
-        conn.commit()
         trade_id = cursor.lastrowid
+        # Every buy starts a share delivery (supply chain case study): due in the demat account on T+1
+        due = db_setup.create_delivery(conn, trade_id, i_row[2], i_row[1], buy_str)
+        conn.commit()
         conn.close()
 
         print(f"\n [✓] Trade #{trade_id}: {i_row[0]} bought {quantity} x {s_row[0]} @ Rs {price:,.2f}.")
         print(f"     Investment: Rs {price * quantity:,.2f} | Auto stop-loss: Rs {stop_loss:,.2f} "
               f"({db_setup.STOP_LOSS_PCT * 100:.0f}% below buy price)")
+        print(f"     Delivery: shares reach the demat account via {i_row[2]} on {due} (T+1) - track it in Option 15.")
     except Exception as e:
         print(f" [!] Error buying stock: {e}")
 
@@ -393,7 +402,7 @@ def export_for_power_bi():
     try:
         conn = get_conn()
         excel_path = "stock_market_export.xlsx"
-        tables = ["sectors", "stocks", "investors", "price_history", "trades", "shipments"]
+        tables = ["sectors", "stocks", "investors", "price_history", "trades", "deliveries"]
         frames = {t: pd.read_sql_query(f"SELECT * FROM {t};", conn) for t in tables}
         conn.close()
 
@@ -415,104 +424,180 @@ def _text_gauge(pct, width=30):
     filled = int(round(max(0, min(100, pct)) / 100 * width))
     return "[" + "#" * filled + "-" * (width - filled) + f"] {pct:.1f}%"
 
+def _meaning(text):
+    print(f"      -> {text}")
+
 def kpi_dashboard():
     sectors = db_setup.SECTORS
-
+    inr = preprocessing.format_inr
+    
+    print("\n" + "=" * 78)
+    print("  MARKET DASHBOARD  (Power BI concepts shown in the terminal)")
+    print("=" * 78)
+    print("  One screen that answers two questions:")
+    print("    1. How is the stock MARKET doing today?")
+    print("    2. How are our INVESTORS doing - are they making money?")
+    print("  First pick the filters. In Power BI these are called SLICERS.")
+    
     # Slicers
-    print("\nSlicer 1 - Sector:  0. All")
+    print("\n  [SLICER 1] Which sector?      0. All")
     for i, s in enumerate(sectors, 1):
-        print(f"                    {i}. {s}")
-    s_choice = input("Select sector (0 = All): ").strip()
+        print(f"                                {i}. {s}")
+    s_choice = input("  Select sector (0 = All): ").strip()
     sector = sectors[int(s_choice) - 1] if s_choice.isdigit() and 1 <= int(s_choice) <= len(sectors) else None
-    r_choice = input("Slicer 2 - Investor Risk Profile (1 Conservative ... 4 Aggressive, 0 = All): ").strip()
+    print("\n  [SLICER 2] Which type of investor?  0. All")
+    for k_, v in db_setup.RISK_PROFILES.items():
+        print(f"                                      {k_}. {v}")
+    r_choice = input("  Select investor type (0 = All): ").strip()
     risk = int(r_choice) if r_choice in ('1', '2', '3', '4') else None
-
+    
     k = preprocessing.get_market_kpis(sector, risk)
+    mood, mood_text = preprocessing.market_mood(k['breadth_pct'])
+    gainers, losers = preprocessing.get_top_movers(5, sector)
+    rising = int(round(k['breadth_pct'] / 100 * k['stocks']))
+    
+    print("\n" + "=" * 78)
+    print(f"  FILTERS APPLIED -> Sector: {sector or 'All'} | Investor type: {db_setup.RISK_PROFILES.get(risk, 'All')}")
+    print("=" * 78)
+    
+    print(f"\n  MARKET MOOD: {mood}")
+    print(f"  [GAUGE] Stocks in an uptrend {_text_gauge(k['breadth_pct'])}")
+    _meaning(f"{rising} of {k['stocks']} stocks trade above their 50-day average price, so {mood_text}.")
+    
+    print("\n  [CARDS] Headline numbers")
+    print(f"    Stocks tracked          : {k['stocks']}")
+    print(f"    Investors / buy orders  : {k['investors']} investors placed {k['total_trades']} orders")
+    print(f"    Shares still held       : {k['open_positions']} positions, bought for {inr(k['open_invested'])}, worth {inr(k['open_value'])} today")
+    print(f"    Unrealised P&L          : {inr(k['unrealised_pnl'], sign=True)}")
+    _meaning("'paper' profit on shares not sold yet - it can still change tomorrow.")
+    print(f"    Realised P&L            : {inr(k['realised_pnl'], sign=True)}")
+    _meaning("profit/loss already locked in by selling.")
+    
+    print("\n  [KPI] Actual vs target")
     change = k['trades_this_month'] - k['trades_last_month']
     arrow = "▲" if change > 0 else ("▼" if change < 0 else "■")
-
-    print("\n" + "=" * 74)
-    print(f"  MARKET KPI DASHBOARD | Sector: {sector or 'All'} | Risk: {db_setup.RISK_PROFILES.get(risk, 'All')}")
-    print("=" * 74)
-    print("  CARDS")
-    print(f"    Stocks: {k['stocks']:<5} Investors: {k['investors']:<5} Trades: {k['total_trades']:<5} Open Positions: {k['open_positions']}")
-    print(f"    Invested (open): Rs {k['open_invested']:,.0f}   Current value: Rs {k['open_value']:,.0f}")
-    print(f"    Unrealised P&L: Rs {k['unrealised_pnl']:+,.0f}   Realised P&L: Rs {k['realised_pnl']:+,.0f}")
-    print("  KPI (vs target)")
-    print(f"    Trades this month: {k['trades_this_month']}  vs last month: {k['trades_last_month']}  {arrow} {change:+d}")
-    print(f"    Win rate: {k['win_rate_pct']:.1f}%  (target >= 55%: {'OK' if k['win_rate_pct'] >= 55 else 'BELOW TARGET'})")
+    print(f"    Orders this month: {k['trades_this_month']}  vs last month: {k['trades_last_month']}   {arrow} {change:+d}")
+    _meaning("investors are trading " + ("more" if change > 0 else "less" if change < 0 else "the same") + " than last month.")
+    status = "ON TARGET ✓" if k['win_rate_pct'] >= 55 else "BELOW TARGET ✗"
+    print(f"    Win rate: {k['win_rate_pct']:.1f}%  (target 55%)  {status}")
+    _meaning(f"out of every 100 shares sold, about {k['win_rate_pct']:.0f} were sold at a profit.")
     print(f"    Stop-loss alerts: {k['stop_loss_hits']}")
-    print("  GAUGE - Market breadth (stocks trading above their 50-day average)")
-    print(f"    {_text_gauge(k['breadth_pct'])}")
-    print("=" * 74)
-
+    _meaning("positions that have fallen more than 8% - see Option 9.")
+    
+    print("\n  TOP 5 GAINERS TODAY                 TOP 5 LOSERS TODAY")
+    for (_, g), (_, l) in zip(gainers.iterrows(), losers.iterrows()):
+        print(f"    {g['symbol']:<11} {g['change_1d']:>+6.2f}%              {l['symbol']:<11} {l['change_1d']:>+6.2f}%")
+    
     # Drill-down: sector -> stocks
     stocks = preprocessing.get_stock_summary()
     if sector is None:
-        print("\n  DRILL-DOWN LEVEL 1: Average 1-Year Return by Sector")
+        print("\n  [DRILL-DOWN] Level 1: Which sector gave the best 1-year return?")
         for name, v in stocks.groupby('sector_name')['return_1y'].mean().sort_values(ascending=False).items():
             bar = ('█' if v >= 0 else '░') * int(abs(v) // 2)
             print(f"    {name:<10} {v:>+7.1f}%  {bar}")
-        pick = input("\n  Type a sector name to drill down (Enter to skip): ").strip()
-        sector = next((s for s in sectors if s.lower() == pick.lower()), None)
-    if sector:
-        print(f"\n  DRILL-DOWN LEVEL 2: Stocks in {sector} (1-Year Return)")
-        for _, r in stocks[stocks['sector_name'] == sector].sort_values('return_1y', ascending=False).iterrows():
+        pick = input("\n  Type a sector name to drill down into its stocks (Enter to skip): ").strip()
+        sector_dd = next((s for s in sectors if s.lower() == pick.lower()), None)
+    else:
+        sector_dd = sector
+    if sector_dd:
+        print(f"\n  [DRILL-DOWN] Level 2: Stocks inside {sector_dd} (1-year return)")
+        for _, r in stocks[stocks['sector_name'] == sector_dd].sort_values('return_1y', ascending=False).iterrows():
             v = r['return_1y']
             print(f"    {r['symbol']:<11} Rs {r['last_close']:>10,.2f} {v:>+7.1f}%  {('█' if v >= 0 else '░') * int(abs(v) // 3)}")
     print()
+    visualizations.plot_market_dashboard(sector, risk)
 
 # ==============================================================================
 # SELF-STUDY CASE STUDY: SUPPLY CHAIN & LOGISTICS (Route mapping, delivery KPIs, region filter)
-# Export shipments of listed manufacturers -> does good logistics show up in the share price?
+# The stock market's own supply chain: delivering bought shares to the demat account (T+1)
 # ==============================================================================
 
 def supply_chain_case_study():
     regions = ['North', 'West', 'South', 'East']
-    print("\nFilter by Region:  0. All Regions")
-    for i, r in enumerate(regions, 1):
-        print(f"                   {i}. {r}")
-    choice = input("Select region (0-4): ").strip()
-    region = regions[int(choice) - 1] if choice in ('1', '2', '3', '4') else None
-
-    ship = preprocessing.get_cleaned_shipments(region)
-    if ship.empty:
-        print(" [!] No shipments found for this region.")
-        return
-    delivered = ship[ship['status'].str.startswith('Delivered')]
-    on_time = (delivered['status'] == 'Delivered On-Time').mean() * 100 if len(delivered) else 0.0
-
+    region_cities = {}
+    for city, region, _, _ in db_setup.INVESTOR_CITIES.values():
+        region_cities.setdefault(region, []).append(city)
+    
     print("\n" + "=" * 80)
-    print(f"  SUPPLY CHAIN & LOGISTICS - EXPORT SHIPMENTS TO JNPT PORT | Region: {region or 'All'}")
+    print("  CASE STUDY: SUPPLY CHAIN OF THE STOCK MARKET - SHARE DELIVERY TRACKER")
     print("=" * 80)
-    print(f"  Shipments: {len(ship)} | Containers: {ship['quantity'].sum()} | Freight: Rs {ship['freight_cost'].sum():,.0f}")
-    print(f"  On-time delivery: {_text_gauge(on_time)} (target 90%)")
-    print(f"  Avg transit days (delivered): {delivered['transit_days'].mean():.1f}")
-
-    print("\n  DELIVERY STATUS KPIs")
-    for status, n in ship['status'].value_counts().items():
-        print(f"    {status:<20} {n:>4}  ({n / len(ship) * 100:.1f}%)")
-
-    print("\n  ROUTES (factory hub -> JNPT port, Navi Mumbai)")
-    print(f"    {'Origin':<12} {'Region':<7} {'Km':>6} {'Shipments':>10} {'Avg Days':>9} {'Late/Delayed':>13}")
-    routes = ship.groupby(['origin_city', 'region']).agg(
-        km=('distance_km', 'first'), n=('shipment_id', 'count'), days=('transit_days', 'mean'),
-        late=('status', lambda s: s.isin(['Delivered Late', 'Delayed In Transit']).sum())
+    print("  When an investor BUYS a share, the share has to be DELIVERED to them,")
+    print("  just like a parcel. It travels through this chain:")
+    print()
+    print("    Investor -> Broker -> NSE Mumbai -> Clearing Corp -> Depository -> Demat account")
+    print("    (places     (Zerodha,  (matches      (settles money    (CDSL/NSDL   (shares")
+    print("     order)      Groww..)   buyer+seller)  and shares)       moves them)  arrive)")
+    print()
+    print("  Rule in India: shares must reach the demat account on T+1")
+    print("  (T = order day, T+1 = next trading day). Later than that = LATE delivery.")
+    print("  Parcel words -> stock words:  shipment = buy order | courier = broker |")
+    print("                                warehouse = NSE Mumbai | delivered = shares in demat")
+    
+    print("\n  REGION = where the investor lives (filter = Power BI slicer):")
+    print("    0. All regions")
+    for i, r in enumerate(regions, 1):
+        print(f"    {i}. {r:<6} - {', '.join(region_cities.get(r, []))}")
+    choice = input("  Select region (0-4): ").strip()
+    region = regions[int(choice) - 1] if choice in ('1', '2', '3', '4') else None
+    
+    deliv = preprocessing.get_cleaned_deliveries(region)
+    if deliv.empty:
+        print(" [!] No orders found for this region.")
+        return
+    done = deliv[deliv['status'].str.startswith('Delivered')]
+    on_time = (done['status'] == 'Delivered On-Time (T+1)').mean() * 100 if len(done) else 0.0
+    late = (deliv['status'] == 'Delivered Late').sum()
+    pending = deliv['status'].str.startswith('Pending').sum()
+    
+    print("\n" + "=" * 80)
+    print(f"  STEP 1  DELIVERY KPIs  | Region: {region or 'All'}")
+    print("=" * 80)
+    print(f"    Buy orders (shipments)   : {len(deliv)}  worth {preprocessing.format_inr(deliv['order_value'].sum())}")
+    print(f"    Shares delivered         : {int(done['quantity'].sum()):,}")
+    print(f"    Delivered on T+1         : {_text_gauge(on_time)}  (target 95%)")
+    print(f"    Late / still pending     : {late} late, {pending} pending")
+    print(f"    Average time to demat    : T+{done['settle_days'].mean():.2f} trading days")
+    _meaning(f"about {round(on_time)} of every 100 investors got their shares on time; "
+             + ("this meets the 95% target." if on_time >= 95 else "this is below the 95% target."))
+    
+    print(f"\n  STEP 2  ROUTES (investor city -> NSE Mumbai)  = route mapping")
+    print(f"    {'From city':<11} {'Region':<7} {'Km to NSE':>9} {'Orders':>7} {'On time':>8} {'Late':>5}")
+    routes = deliv.groupby(['from_city', 'region']).agg(
+        km=('distance_km', 'first'), n=('delivery_id', 'count'),
+        on_time=('status', lambda s: (s == 'Delivered On-Time (T+1)').sum() / max(1, s.str.startswith('Delivered').sum()) * 100),
+        late=('status', lambda s: (s == 'Delivered Late').sum())
     ).reset_index().sort_values('n', ascending=False)
     for _, r in routes.iterrows():
-        print(f"    {r['origin_city']:<12} {r['region']:<7} {r['km']:>6.0f} {r['n']:>10} {r['days']:>9.1f} {r['late']:>13}")
-
-    print("\n  COMPANY SCORECARD (logistics vs share price)")
-    print(f"    {'Stock':<11} {'Sector':<7} {'Shipments':>10} {'On-time %':>10} {'Avg Delay':>10} {'1Y Return':>10}")
-    score = preprocessing.get_company_logistics_scorecard(region)
+        print(f"    {r['from_city']:<11} {r['region']:<7} {r['km']:>9.0f} {r['n']:>7} {r['on_time']:>7.0f}% {r['late']:>5}")
+    worst = routes.sort_values('on_time').iloc[0]
+    _meaning(f"distance does not slow a digital share; {worst['from_city']} has the lowest on-time rate "
+             f"({worst['on_time']:.0f}%) because of its brokers and paperwork, not the km.")
+    
+    print("\n  STEP 3  BROKER REPORT CARD  (the 'courier companies' of the stock market)")
+    print(f"    {'Broker':<13} {'Orders':>7} {'On time':>8} {'Late':>5} {'Avg days':>9}  Grade")
+    score = preprocessing.get_broker_scorecard(region)
     for _, r in score.iterrows():
-        print(f"    {r['symbol']:<11} {r['sector_name']:<7} {r['shipments']:>10} {r['on_time_pct']:>9.0f}% {r['avg_delay']:>9.1f}d {r['return_1y']:>+9.1f}%")
-    if len(score) > 2:
-        corr = score['on_time_pct'].corr(score['return_1y'])
-        print(f"\n  Correlation (on-time % vs 1Y return): r = {corr:.2f}  -> "
-              f"{'companies that deliver on time have done better on the stock market' if corr > 0.2 else 'no clear link in this region'}")
+        print(f"    {r['broker']:<13} {r['orders']:>7} {r['on_time_pct']:>7.0f}% {r['late']:>5} {'T+' + format(r['avg_settle_days'], '.2f'):>9}  {r['grade']}")
+    print("    Grade A = 95%+ on time | B = 88-95% | C = below 88% (often late)")
+    if len(score):
+        best, worst_b = score.iloc[0], score.iloc[-1]
+        _meaning(f"{best['broker']} is the most reliable; {worst_b['broker']} delivers late most often.")
+    
+    print("\n  STEP 4  WHY WERE DELIVERIES LATE?")
+    reasons = deliv[deliv['delay_reason'] != '-']['delay_reason'].value_counts()
+    if reasons.empty:
+        print("    No late deliveries in this region.")
+    for reason, n in reasons.items():
+        print(f"    {reason:<36} {n:>3}  {'█' * n}")
+    
+    print("\n  INVESTOR TAKEAWAY")
+    print(f"    - {on_time:.0f}% of shares reached the demat account on time (T+1).")
+    if len(score):
+        print(f"    - Choose a Grade A broker ({', '.join(score[score['grade'] == 'A']['broker']) or 'none in this region'}) for the fastest delivery.")
+    if not reasons.empty:
+        print(f"    - Most common delay: '{reasons.index[0]}' - pay funds on time and keep KYC/demat details correct.")
     print("=" * 80)
-
+    
     visualizations.plot_supply_chain_dashboard(region)
 
 # ==============================================================================
@@ -534,6 +619,30 @@ def run_chart(number):
     print(f" [!] Invalid chart number. Use 1 to {len(visualizations.CHART_MENU)}.")
     return False
 
+def safe_input(prompt):
+    """input() that never crashes the program: Ctrl+C just cancels the current question."""
+    try:
+        return input(prompt).strip()
+    except KeyboardInterrupt:
+        print("\n [i] Ctrl+C pressed - cancelled. The program keeps running (type 0 in the main menu to exit).")
+        return None
+    except EOFError:
+        print("\n [i] Input stream closed - exiting.")
+        sys.exit(0)
+
+def run_safely(action):
+    """Runs one menu action; any error or Ctrl+C returns to the menu instead of stopping the program."""
+    try:
+        action()
+    except KeyboardInterrupt:
+        print("\n [i] Cancelled - back to the menu.")
+    except EOFError:
+        print("\n [i] Input stream closed - exiting.")
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n [!] Something went wrong: {e}")
+        print("     No problem - the menu is still running. Try again or pick another option.")
+
 def visualization_menu():
     while True:
         print("\n" + "=" * 72)
@@ -544,13 +653,15 @@ def visualization_menu():
         print("   0. Back to Main Menu")
         print("=" * 72)
 
-        choice = input(f"Select chart (1-{len(visualizations.CHART_MENU)}, A, 0): ").strip()
+        choice = safe_input(f"Select chart (1-{len(visualizations.CHART_MENU)}, A, 0): ")
+        if choice is None:
+            continue
         if choice == '0':
             break
         elif choice.lower() == 'a':
-            visualizations.generate_all_visualizations()
+            run_safely(visualizations.generate_all_visualizations)
         elif choice.isdigit():
-            run_chart(int(choice))
+            run_safely(lambda: run_chart(int(choice)))
         else:
             print(" [!] Invalid option.")
 
@@ -579,13 +690,15 @@ def main_menu():
         print(" 11. Data Cleaning & Aggregation Report")
         print(" 12. Data Visualization Menu (Unit 1 - Unit 5)")
         print(" 13. Generate All Charts (One-Click)")
-        print(" 14. KPI Dashboard (Cards, KPI, Gauge, Slicers, Drill-down)")
-        print(" 15. Supply Chain & Logistics Case Study (Region filter)")
+        print(" 14. Market Dashboard (KPI Cards, Gauge, Slicers, Drill-down)")
+        print(" 15. Supply Chain Case Study: Share Delivery Tracker (Region filter)")
         print(" 16. Export Dataset for Power BI (stock_market_export.xlsx)")
         print("  0. Exit")
         print("="*66)
 
-        choice = input("Enter choice (0-16): ").strip()
+        choice = safe_input("Enter choice (0-16): ")
+        if choice is None:
+            continue
 
         actions = {
             '1': view_stocks, '2': add_stock, '3': remove_stock, '4': search_and_analyse,
@@ -599,7 +712,7 @@ def main_menu():
             print("\n [✓] Thank you for using the Stock Market Analysis System. Goodbye!\n")
             sys.exit(0)
         elif choice in actions:
-            actions[choice]()
+            run_safely(actions[choice])
         else:
             print(" [!] Invalid selection. Please enter a valid menu number (0-16).")
 

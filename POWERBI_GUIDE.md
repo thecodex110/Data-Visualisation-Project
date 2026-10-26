@@ -40,7 +40,7 @@ Power BI ecosystem consists of three main components:
    - `investors`
    - `price_history` (daily Open/High/Low/Close/Volume)
    - `trades`
-   - `shipments` (case study)
+   - `deliveries` (case study: share delivery log)
 3. In **Power BI Desktop**:
    - Click **Get Data** -> **Excel Workbook**.
    - Select `stock_market_export.xlsx`.
@@ -51,7 +51,7 @@ Power BI ecosystem consists of three main components:
 2. In Power BI Desktop:
    - Click **Get Data** -> **ODBC**.
    - Connection String: `DRIVER=SQLite3 ODBC Driver;Database=C:\path\to\stock_market.db;`
-   - Select tables: `sectors`, `stocks`, `investors`, `price_history`, `trades`, `shipments`.
+   - Select tables: `sectors`, `stocks`, `investors`, `price_history`, `trades`, `deliveries`.
 
 ### Option C: Web API Endpoint (Cloud Native Integration)
 Live prices normally come from a market-data API (for example an end-of-day price feed exposed as JSON):
@@ -91,7 +91,7 @@ In Power BI **Model View**, configure star schema relationships:
 - `stocks[stock_id]` 1 : * `price_history[stock_id]` (Single direction)
 - `stocks[stock_id]` 1 : * `trades[stock_id]` (Single direction)
 - `investors[investor_id]` 1 : * `trades[investor_id]` (Single direction)
-- `stocks[stock_id]` 1 : * `shipments[stock_id]` (Single direction)
+- `trades[trade_id]` 1 : 1 `deliveries[trade_id]` (Single direction)
 
 Add a **Latest Price** calculated column on `stocks` so open positions can be valued:
 ```dax
@@ -109,6 +109,8 @@ Build an executive single-page dashboard containing:
 | Visual Type | Configuration & Data Fields | Purpose |
 | :--- | :--- | :--- |
 | **Card Visuals** | `Total Trades`, `Open Positions`, `Realised P&L (₹)`, `Unrealised P&L (₹)` | Immediate KPI headline figures |
+| **Gauge Visual (Market Mood)** | Value: `Market Breadth %` (stocks above 50-day average)<br>Target: `60%` | Bullish / Neutral / Bearish at a glance |
+| **Top Movers (Bar)** | Axis: `stocks[symbol]`, Value: `1-Day Change %`, **Top N** filter = 5 (and Bottom 5) | Today's gainers and losers |
 | **KPI Visual** | Indicator: `Trades This Month`<br>Target: `Trades Last Month` | Track trading activity trend |
 | **Gauge Visual** | Value: `Win Rate %`<br>Target: `55%` | Measure how often closed trades make money |
 | **Line Chart** | Axis: `price_history[trade_date]`<br>Values: `close` (filtered to one stock) + 20/50-day moving average measures | Price trend & signals |
@@ -184,28 +186,30 @@ To embed this dashboard directly into a brokerage or advisory web portal:
 
 ---
 
-## 7. Case Study: Supply Chain & Logistics Dashboard (Self-study)
+## 7. Case Study: Supply Chain & Logistics Dashboard (Self-study) - Share Delivery Tracker
 
-Use the `shipments` sheet to rebuild the Python case-study dashboard (main menu option 15) in Power BI. The shipments are export consignments of the listed manufacturers (Pharma, Auto, FMCG) from their factory hubs to **JNPT Port, Navi Mumbai**.
+Use the `deliveries` sheet to rebuild the Python case-study dashboard (main menu option 15) in Power BI. In the stock market the "supply chain" is **share delivery**: after a buy order, shares travel Investor -> Broker -> NSE Mumbai -> Clearing Corporation -> Depository (CDSL/NSDL) -> the investor's **demat account**, and must arrive on **T+1** (next trading day). Each row of `deliveries` is one buy order = one "shipment"; the broker plays the role of the courier.
 
 1. **Power Query** - add custom columns:
    ```powerquery
-   Transit_Days = Duration.Days((if [delivery_date] = null then DateTime.Date(DateTime.LocalNow()) else [delivery_date]) - [dispatch_date])
+   Is_Delivered = if [delivery_date] <> null then 1 else 0
    Is_On_Time   = if [delivery_date] <> null and [delivery_date] <= [expected_date] then 1 else 0
    ```
 2. **DAX measures**:
    ```dax
-   Total Shipments = COUNTROWS(shipments)
-   On-Time % = DIVIDE(SUM(shipments[Is_On_Time]), CALCULATE(COUNTROWS(shipments), NOT ISBLANK(shipments[delivery_date])), 0)
-   In Transit = CALCULATE(COUNTROWS(shipments), ISBLANK(shipments[delivery_date]))
-   Avg Transit Days = AVERAGE(shipments[Transit_Days])
+   Total Orders = COUNTROWS(deliveries)
+   On-Time % (T+1) = DIVIDE(SUM(deliveries[Is_On_Time]), SUM(deliveries[Is_Delivered]), 0)
+   Pending = CALCULATE(COUNTROWS(deliveries), ISBLANK(deliveries[delivery_date]))
+   Late Deliveries = SUM(deliveries[Is_Delivered]) - SUM(deliveries[Is_On_Time])
+   Avg Days to Demat = AVERAGEX(FILTER(deliveries, NOT ISBLANK(deliveries[delivery_date])),
+                                NETWORKDAYS(deliveries[order_date], deliveries[delivery_date]) - 1)
    ```
 3. **Visuals**:
-   - Cards: Total Shipments, In Transit, Avg Transit Days
-   - Gauge: On-Time % (target 90%)
-   - Route mapping: **Map** visual with `origin_city` as location, bubble size = Total Shipments (destination = JNPT Port, Navi Mumbai)
-   - Stacked bar: status by `region`
-   - Scatter: `On-Time %` (x) vs the company's 1-year return (y), one dot per `stocks[symbol]` — the stock-market link
+   - Cards: Total Orders, Late Deliveries, Pending, Avg Days to Demat
+   - Gauge: On-Time % (T+1) (target 95%)
+   - Route mapping: **Map** visual with `from_city` as location, bubble size = Total Orders (all orders go to NSE, Mumbai)
+   - Stacked bar: delivery status by `region`
+   - Bar: On-Time % by `broker` (broker report card) and count of orders by `delay_reason`
    - **Slicer on `region`** (North / West / South / East) for filtering by region
 
 ---

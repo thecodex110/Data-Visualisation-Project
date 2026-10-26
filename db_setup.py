@@ -1,106 +1,200 @@
 import sqlite3
 import random
 import math
+import numpy as np
+import pandas as pd
 from datetime import datetime, timedelta
 from faker import Faker
 
-DB_NAME = "library.db"
+DB_NAME = "stock_market.db"
+TRADING_DAYS = 250          # about one year of NSE trading sessions
+STOP_LOSS_PCT = 0.08        # stop-loss is placed 8% below the buy price
 
-# Publisher dispatch hubs (one city per publisher state) and the campus (Pune) delivery point
-PUBLISHER_HUBS = {
-    "Maharashtra": ("Mumbai", "West", 19.0760, 72.8777),
-    "Gujarat": ("Ahmedabad", "West", 23.0225, 72.5714),
-    "Delhi": ("New Delhi", "North", 28.6139, 77.2090),
-    "Karnataka": ("Bengaluru", "South", 12.9716, 77.5946),
-    "Tamil Nadu": ("Chennai", "South", 13.0827, 80.2707),
-    "West Bengal": ("Kolkata", "East", 22.5726, 88.3639),
+SECTORS = ["IT", "Banking", "Pharma", "Auto", "FMCG", "Energy"]
+RISK_PROFILES = {1: "Conservative", 2: "Moderate", 3: "Growth", 4: "Aggressive"}
+
+# Sector behaviour used by the price simulator: (annual drift, daily sector volatility, daily stock volatility)
+SECTOR_PROFILE = {
+    "IT":      (0.08, 0.006, 0.012),
+    "Banking": (0.14, 0.007, 0.011),
+    "Pharma":  (0.18, 0.006, 0.012),
+    "Auto":    (0.22, 0.008, 0.015),
+    "FMCG":    (0.06, 0.004, 0.008),
+    "Energy":  (0.10, 0.007, 0.013),
 }
-CAMPUS_LOCATION = ("Pune Campus", 18.5204, 73.8567)
-COURIERS = ["BlueDart", "Delhivery", "DTDC", "India Post"]
+
+# 36 NSE-listed companies (6 per sector): symbol, company, sector, HQ state, starting price (Rs), plant city
+# Prices are SIMULATED sample data, not real market prices.
+STOCK_LIST = [
+    ("TCS", "Tata Consultancy Services", "IT", "Maharashtra", 3850, None),
+    ("INFY", "Infosys", "IT", "Karnataka", 1520, None),
+    ("WIPRO", "Wipro", "IT", "Karnataka", 470, None),
+    ("HCLTECH", "HCL Technologies", "IT", "Uttar Pradesh", 1380, None),
+    ("TECHM", "Tech Mahindra", "IT", "Maharashtra", 1250, None),
+    ("LTIM", "LTIMindtree", "IT", "Maharashtra", 5200, None),
+    ("HDFCBANK", "HDFC Bank", "Banking", "Maharashtra", 1560, None),
+    ("ICICIBANK", "ICICI Bank", "Banking", "Gujarat", 990, None),
+    ("SBIN", "State Bank of India", "Banking", "Maharashtra", 610, None),
+    ("KOTAKBANK", "Kotak Mahindra Bank", "Banking", "Maharashtra", 1780, None),
+    ("AXISBANK", "Axis Bank", "Banking", "Gujarat", 1040, None),
+    ("INDUSINDBK", "IndusInd Bank", "Banking", "Maharashtra", 1450, None),
+    ("SUNPHARMA", "Sun Pharmaceutical", "Pharma", "Gujarat", 1150, "Ahmedabad"),
+    ("DRREDDY", "Dr. Reddy's Laboratories", "Pharma", "Telangana", 5400, "Hyderabad"),
+    ("CIPLA", "Cipla", "Pharma", "Maharashtra", 1240, "Pune"),
+    ("DIVISLAB", "Divi's Laboratories", "Pharma", "Telangana", 3600, "Hyderabad"),
+    ("LUPIN", "Lupin", "Pharma", "Maharashtra", 1100, "Pune"),
+    ("AUROPHARMA", "Aurobindo Pharma", "Pharma", "Telangana", 920, "Hyderabad"),
+    ("MARUTI", "Maruti Suzuki", "Auto", "Delhi", 10100, "Gurugram"),
+    ("TATAMOTORS", "Tata Motors", "Auto", "Maharashtra", 640, "Jamshedpur"),
+    ("M&M", "Mahindra & Mahindra", "Auto", "Maharashtra", 1550, "Pune"),
+    ("BAJAJ-AUTO", "Bajaj Auto", "Auto", "Maharashtra", 5000, "Pune"),
+    ("HEROMOTOCO", "Hero MotoCorp", "Auto", "Delhi", 3100, "Gurugram"),
+    ("EICHERMOT", "Eicher Motors", "Auto", "Delhi", 3400, "Chennai"),
+    ("HINDUNILVR", "Hindustan Unilever", "FMCG", "Maharashtra", 2550, "Kolkata"),
+    ("ITC", "ITC", "FMCG", "West Bengal", 440, "Kolkata"),
+    ("NESTLEIND", "Nestle India", "FMCG", "Delhi", 2400, "Gurugram"),
+    ("BRITANNIA", "Britannia Industries", "FMCG", "West Bengal", 4700, "Kolkata"),
+    ("DABUR", "Dabur India", "FMCG", "Delhi", 560, "Gurugram"),
+    ("MARICO", "Marico", "FMCG", "Maharashtra", 540, "Ahmedabad"),
+    ("RELIANCE", "Reliance Industries", "Energy", "Maharashtra", 2450, None),
+    ("ONGC", "Oil & Natural Gas Corp", "Energy", "Delhi", 190, None),
+    ("NTPC", "NTPC", "Energy", "Delhi", 240, None),
+    ("POWERGRID", "Power Grid Corp", "Energy", "Delhi", 230, None),
+    ("BPCL", "Bharat Petroleum", "Energy", "Maharashtra", 380, None),
+    ("IOC", "Indian Oil Corp", "Energy", "Delhi", 120, None),
+]
+
+# Case study: factory hubs of manufacturing companies -> JNPT export port (Navi Mumbai)
+PLANT_HUBS = {
+    "Gurugram": ("Haryana", "North", 28.4595, 77.0266),
+    "Pune": ("Maharashtra", "West", 18.5204, 73.8567),
+    "Ahmedabad": ("Gujarat", "West", 23.0225, 72.5714),
+    "Hyderabad": ("Telangana", "South", 17.3850, 78.4867),
+    "Chennai": ("Tamil Nadu", "South", 13.0827, 80.2707),
+    "Kolkata": ("West Bengal", "East", 22.5726, 88.3639),
+    "Jamshedpur": ("Jharkhand", "East", 22.8046, 86.2029),
+}
+PORT_LOCATION = ("JNPT Port (Navi Mumbai)", 18.9490, 72.9520)
+CARRIERS = ["Blue Dart", "Delhivery", "VRL Logistics", "CONCOR Rail"]
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    
+
     # Enable foreign keys
     cursor.execute("PRAGMA foreign_keys = ON;")
-    
+
     # Drop existing tables to ensure clean seed
-    cursor.execute("DROP TABLE IF EXISTS shipments;")
-    cursor.execute("DROP TABLE IF EXISTS transactions;")
-    cursor.execute("DROP TABLE IF EXISTS books;")
-    cursor.execute("DROP TABLE IF EXISTS students;")
-    cursor.execute("DROP TABLE IF EXISTS departments;")
-    
+    for table in ["shipments", "trades", "price_history", "stocks", "investors", "sectors"]:
+        cursor.execute(f"DROP TABLE IF EXISTS {table};")
+
     # Create tables
     cursor.execute("""
-    CREATE TABLE departments (
-        dept_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        dept_name TEXT NOT NULL UNIQUE
+    CREATE TABLE sectors (
+        sector_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sector_name TEXT NOT NULL UNIQUE
     );
     """)
-    
-    cursor.execute("""
-    CREATE TABLE students (
-        student_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        dept_id INTEGER NOT NULL,
-        year INTEGER NOT NULL,
-        home_state TEXT NOT NULL,
-        FOREIGN KEY (dept_id) REFERENCES departments(dept_id)
-    );
-    """)
-    
-    cursor.execute("""
-    CREATE TABLE books (
-        book_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        author TEXT NOT NULL,
-        dept_id INTEGER NOT NULL,
-        total_copies INTEGER NOT NULL,
-        available_copies INTEGER NOT NULL,
-        publisher_state TEXT NOT NULL,
-        FOREIGN KEY (dept_id) REFERENCES departments(dept_id)
-    );
-    """)
-    
-    cursor.execute("""
-    CREATE TABLE transactions (
-        txn_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        book_id INTEGER NOT NULL,
-        student_id INTEGER NOT NULL,
-        issue_date TEXT NOT NULL,
-        due_date TEXT NOT NULL,
-        return_date TEXT,
-        fine_amount REAL DEFAULT 0.0,
-        FOREIGN KEY (book_id) REFERENCES books(book_id),
-        FOREIGN KEY (student_id) REFERENCES students(student_id)
-    );
-    """)
-    
-    create_shipments_table(cursor)
-    conn.commit()
-    conn.close()
 
-def create_shipments_table(cursor):
-    """Shipment & delivery log for book procurement (Supply Chain & Logistics case study)."""
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS shipments (
+    CREATE TABLE investors (
+        investor_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        risk_profile INTEGER NOT NULL,
+        home_state TEXT NOT NULL
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE stocks (
+        stock_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT NOT NULL UNIQUE,
+        company_name TEXT NOT NULL,
+        sector_id INTEGER NOT NULL,
+        hq_state TEXT NOT NULL,
+        plant_city TEXT,
+        FOREIGN KEY (sector_id) REFERENCES sectors(sector_id)
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE price_history (
+        price_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        stock_id INTEGER NOT NULL,
+        trade_date TEXT NOT NULL,
+        open REAL NOT NULL,
+        high REAL NOT NULL,
+        low REAL NOT NULL,
+        close REAL,
+        volume INTEGER NOT NULL,
+        FOREIGN KEY (stock_id) REFERENCES stocks(stock_id)
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE trades (
+        trade_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        stock_id INTEGER NOT NULL,
+        investor_id INTEGER NOT NULL,
+        buy_date TEXT NOT NULL,
+        buy_price REAL NOT NULL,
+        quantity INTEGER NOT NULL,
+        stop_loss REAL NOT NULL,
+        sell_date TEXT,
+        sell_price REAL,
+        FOREIGN KEY (stock_id) REFERENCES stocks(stock_id),
+        FOREIGN KEY (investor_id) REFERENCES investors(investor_id)
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE shipments (
         shipment_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        book_id INTEGER NOT NULL,
+        stock_id INTEGER NOT NULL,
         quantity INTEGER NOT NULL,
         origin_city TEXT NOT NULL,
         origin_state TEXT NOT NULL,
         region TEXT NOT NULL,
-        courier TEXT NOT NULL,
+        carrier TEXT NOT NULL,
         distance_km REAL NOT NULL,
         freight_cost REAL NOT NULL,
         dispatch_date TEXT NOT NULL,
         expected_date TEXT NOT NULL,
         delivery_date TEXT,
-        FOREIGN KEY (book_id) REFERENCES books(book_id)
+        FOREIGN KEY (stock_id) REFERENCES stocks(stock_id)
     );
     """)
+    conn.commit()
+    conn.close()
+
+def trading_dates(n=TRADING_DAYS):
+    """Last n weekday sessions ending today (or the last weekday)."""
+    return [d.strftime("%Y-%m-%d") for d in pd.bdate_range(end=datetime.now().date(), periods=n)]
+
+def build_ohlcv(rng, returns, start_price, base_volume):
+    """Turns a series of daily returns into Open/High/Low/Close/Volume rows."""
+    closes = start_price * np.cumprod(1 + returns)
+    prev = np.concatenate([[start_price], closes[:-1]])
+    opens = prev * (1 + rng.normal(0, 0.003, len(returns)))
+    highs = np.maximum(opens, closes) * (1 + np.abs(rng.normal(0, 0.006, len(returns))))
+    lows = np.minimum(opens, closes) * (1 - np.abs(rng.normal(0, 0.006, len(returns))))
+    volumes = (base_volume * np.exp(rng.normal(0, 0.35, len(returns))) * (1 + 8 * np.abs(returns))).astype(int)
+    return opens, highs, lows, closes, volumes
+
+def simulate_new_stock_history(conn, stock_id, sector_name, end_price, seed=None):
+    """Creates one year of simulated prices for a newly added stock, ending at the given price."""
+    rng = np.random.default_rng(seed)
+    mu, s_sec, s_stock = SECTOR_PROFILE.get(sector_name, (0.10, 0.006, 0.012))
+    sigma = math.sqrt(0.008 ** 2 + s_sec ** 2 + s_stock ** 2)
+    returns = mu / 252 + sigma * rng.standard_t(4, TRADING_DAYS) / math.sqrt(2)
+    opens, highs, lows, closes, volumes = build_ohlcv(rng, returns, 1.0, rng.uniform(5e5, 4e6))
+    scale = end_price / closes[-1]
+    rows = [(stock_id, d, round(o * scale, 2), round(h * scale, 2), round(l * scale, 2), round(c * scale, 2), int(v))
+            for d, o, h, l, c, v in zip(trading_dates(), opens, highs, lows, closes, volumes)]
+    conn.executemany("""
+    INSERT INTO price_history (stock_id, trade_date, open, high, low, close, volume)
+    VALUES (?, ?, ?, ?, ?, ?, ?);
+    """, rows)
 
 def haversine_km(lat1, lon1, lat2, lon2):
     """Great-circle distance between two lat/lon points in kilometres."""
@@ -110,266 +204,152 @@ def haversine_km(lat1, lon1, lat2, lon2):
     a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
     return 2 * r * math.asin(math.sqrt(a))
 
-def seed_shipments(conn, n_shipments=160):
-    """Seeds publisher -> campus shipment logs over the past year."""
+def seed_shipments(conn, quality, n_shipments=180):
+    """Seeds factory -> port export shipments for manufacturing companies over the past year.
+    `quality` (one number per stock) links logistics with the stock: well-run companies deliver
+    on time more often AND their simulated share price drifts up faster."""
     rng = random.Random(7)
     cursor = conn.cursor()
-    cursor.execute("SELECT book_id, publisher_state FROM books;")
-    books = [r for r in cursor.fetchall() if r[1] in PUBLISHER_HUBS]
-    if not books:
+    cursor.execute("SELECT stock_id, plant_city FROM stocks WHERE plant_city IS NOT NULL;")
+    makers = cursor.fetchall()
+    if not makers:
         return
-    
-    _, campus_lat, campus_lon = CAMPUS_LOCATION
+
+    _, port_lat, port_lon = PORT_LOCATION
     today = datetime.now()
     rows = []
     for _ in range(n_shipments):
-        book_id, state = rng.choice(books)
-        city, region, lat, lon = PUBLISHER_HUBS[state]
-        distance = haversine_km(lat, lon, campus_lat, campus_lon)
-        courier = rng.choice(COURIERS)
-        quantity = rng.randint(2, 12)
-        freight = round(40 + distance * 0.12 * quantity / 4, 2)
-        
+        stock_id, city = rng.choice(makers)
+        state, region, lat, lon = PLANT_HUBS[city]
+        distance = haversine_km(lat, lon, port_lat, port_lon)
+        carrier = rng.choice(CARRIERS)
+        containers = rng.randint(1, 8)
+        freight = round(8000 + distance * 38 * containers, 2)
+
         dispatch_dt = today - timedelta(days=rng.randint(1, 365))
         expected_days = math.ceil(distance / 450) + 1
         expected_dt = dispatch_dt + timedelta(days=expected_days)
-        
-        # Delay profile: India Post is slower, longer routes slip more often
-        delay_p = 0.15 + (0.15 if courier == "India Post" else 0) + distance / 10000
+
+        # Delay profile: rail is slower, long routes slip more, badly run companies slip more
+        delay_p = 0.18 + (0.12 if carrier == "CONCOR Rail" else 0) + distance / 12000 - 0.12 * quality.get(stock_id, 0)
         delay = rng.randint(1, 6) if rng.random() < delay_p else -rng.randint(0, 1)
         delivery_dt = dispatch_dt + timedelta(days=max(1, expected_days + delay))
         delivery_str = delivery_dt.strftime("%Y-%m-%d") if delivery_dt <= today else None
-        
-        rows.append((book_id, quantity, city, state, region, courier, round(distance, 1), freight,
+
+        rows.append((stock_id, containers, city, state, region, carrier, round(distance, 1), freight,
                      dispatch_dt.strftime("%Y-%m-%d"), expected_dt.strftime("%Y-%m-%d"), delivery_str))
-    
+
     cursor.executemany("""
-    INSERT INTO shipments (book_id, quantity, origin_city, origin_state, region, courier, distance_km,
+    INSERT INTO shipments (stock_id, quantity, origin_city, origin_state, region, carrier, distance_km,
                            freight_cost, dispatch_date, expected_date, delivery_date)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     """, rows)
     conn.commit()
 
-def ensure_shipments(db_path=DB_NAME):
-    """Adds the shipments table to an existing library.db without touching library data."""
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='shipments';")
-    if cursor.fetchone() is None:
-        create_shipments_table(cursor)
-        seed_shipments(conn)
-    conn.close()
-
 def seed_db():
     fake = Faker('en_IN')
     Faker.seed(42)
     random.seed(42)
-    
+    rng = np.random.default_rng(42)
+
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    
-    # 1. Seed Departments
-    departments = [
-        "Computer Science",
-        "Mechanical",
-        "Civil",
-        "AIML",
-        "Electronics",
-        "E&TC"
-    ]
-    for dept in departments:
-        cursor.execute("INSERT INTO departments (dept_name) VALUES (?);", (dept,))
-    
+
+    # 1. Seed Sectors
+    for sector in SECTORS:
+        cursor.execute("INSERT INTO sectors (sector_name) VALUES (?);", (sector,))
     conn.commit()
-    
-    # Fetch department IDs mapping
-    cursor.execute("SELECT dept_name, dept_id FROM departments;")
-    dept_map = dict(cursor.fetchall())
-    dept_ids = list(dept_map.values())
-    
-    # 2. Seed Students (90 students)
+    cursor.execute("SELECT sector_name, sector_id FROM sectors;")
+    sector_map = dict(cursor.fetchall())
+
+    # 2. Seed Investors (90 investors from 10 states, risk profile 1-4)
     indian_states = [
         "Maharashtra", "Karnataka", "Gujarat", "Delhi", "Tamil Nadu",
         "Uttar Pradesh", "Rajasthan", "Kerala", "West Bengal", "Telangana"
     ]
-    
-    students_data = []
-    for _ in range(90):
-        name = fake.name()
-        dept_id = random.choice(dept_ids)
-        year = random.randint(1, 4)
-        home_state = random.choice(indian_states)
-        students_data.append((name, dept_id, year, home_state))
-        
+    investors_data = [(fake.name(), random.choice([1, 2, 2, 3, 3, 4]), random.choice(indian_states)) for _ in range(90)]
+    cursor.executemany("INSERT INTO investors (name, risk_profile, home_state) VALUES (?, ?, ?);", investors_data)
+
+    # 3. Seed Stocks (36 companies, 6 per sector)
     cursor.executemany("""
-    INSERT INTO students (name, dept_id, year, home_state)
-    VALUES (?, ?, ?, ?);
-    """, students_data)
-    
-    # 3. Seed Books (54 realistic books, 9 per department)
-    book_titles_by_dept = {
-        "Computer Science": [
-            ("Introduction to Algorithms", "Thomas H. Cormen"),
-            ("Clean Code", "Robert C. Martin"),
-            ("Operating System Concepts", "Abraham Silberschatz"),
-            ("Computer Networks", "Andrew S. Tanenbaum"),
-            ("Database System Concepts", "Henry F. Korth"),
-            ("Artificial Intelligence: A Modern Approach", "Stuart Russell"),
-            ("Design Patterns", "Erich Gamma"),
-            ("Compilers: Principles, Techniques, and Tools", "Alfred V. Aho"),
-            ("Computer Organization and Design", "David A. Patterson")
-        ],
-        "Mechanical": [
-            ("Thermodynamics: An Engineering Approach", "Yunus A. Cengel"),
-            ("Fluid Mechanics", "Frank M. White"),
-            ("Theory of Machines", "S. S. Rattan"),
-            ("Strength of Materials", "R. K. Bansal"),
-            ("Heat and Mass Transfer", "P. K. Nag"),
-            ("Manufacturing Engineering and Technology", "Serope Kalpakjian"),
-            ("Design of Machine Elements", "V. B. Bhandari"),
-            ("Engineering Mechanics: Statics and Dynamics", "R. C. Hibbeler"),
-            ("Internal Combustion Engines", "V. Ganesan")
-        ],
-        "Civil": [
-            ("Basic and Applied Soil Mechanics", "Gopal Ranjan"),
-            ("Design of Reinforced Concrete Structures", "N. Krishna Raju"),
-            ("Surveying Vol. 1", "B. C. Punmia"),
-            ("Structural Analysis", "R. C. Hibbeler"),
-            ("Environmental Engineering", "S. K. Garg"),
-            ("Transportation Engineering", "C. Justo & A. Veeraragavan"),
-            ("Fluid Mechanics & Hydraulic Machines", "R. K. Rajput"),
-            ("Building Construction", "S. C. Rangwala"),
-            ("Engineering Geology", "Parbin Singh")
-        ],
-        "AIML": [
-            ("Pattern Recognition and Machine Learning", "Christopher M. Bishop"),
-            ("Deep Learning", "Ian Goodfellow"),
-            ("Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow", "Aurélien Géron"),
-            ("Python for Data Analysis", "Wes McKinney"),
-            ("Reinforcement Learning: An Introduction", "Richard S. Sutton"),
-            ("Data Mining: Concepts and Techniques", "Jiawei Han"),
-            ("Speech and Language Processing", "Daniel Jurafsky"),
-            ("Computer Vision: Algorithms and Applications", "Richard Szeliski"),
-            ("Mathematics for Machine Learning", "Marc Peter Deisenroth")
-        ],
-        "Electronics": [
-            ("Microelectronic Circuits", "Adel S. Sedra"),
-            ("Electronic Devices and Circuit Theory", "Robert L. Boylestad"),
-            ("Op-Amps and Linear Integrated Circuits", "Ramakant A. Gayakwad"),
-            ("Digital Design", "M. Morris Mano"),
-            ("Power Electronics", "M. H. Rashid"),
-            ("VLSI Design", "Debaprasad Das"),
-            ("Embedded Systems Architecture", "Tammy Noergaard"),
-            ("Control Systems Engineering", "I. J. Nagrath & M. Gopal"),
-            ("Fundamentals of Electric Circuits", "Charles K. Alexander")
-        ],
-        "E&TC": [
-            ("Signals and Systems", "Alan V. Oppenheim"),
-            ("Modern Digital and Analog Communication Systems", "B. P. Lathi"),
-            ("Optical Fiber Communications", "Gerd Keiser"),
-            ("Antennas and Wave Propagation", "John D. Kraus"),
-            ("Wireless Communications", "Theodore S. Rappaport"),
-            ("Digital Signal Processing", "John G. Proakis"),
-            ("Electromagnetic Waves and Radiating Systems", "E. C. Jordan"),
-            ("Satellite Communications", "Timothy Pratt"),
-            ("Microprocessors and Interfacing", "Douglas V. Hall")
-        ]
-    }
-    
-    publisher_states = [
-        "Maharashtra", "Delhi", "Tamil Nadu", "Karnataka", "West Bengal", "Gujarat"
-    ]
-    
-    books_data = []
-    for dept_name, books_list in book_titles_by_dept.items():
-        d_id = dept_map[dept_name]
-        for title, author in books_list:
-            total_copies = random.randint(4, 10)
-            available_copies = total_copies  # will adjust after seeding transactions
-            pub_state = random.choice(publisher_states)
-            books_data.append((title, author, d_id, total_copies, available_copies, pub_state))
-            
-    cursor.executemany("""
-    INSERT INTO books (title, author, dept_id, total_copies, available_copies, publisher_state)
-    VALUES (?, ?, ?, ?, ?, ?);
-    """, books_data)
-    
+    INSERT INTO stocks (symbol, company_name, sector_id, hq_state, plant_city)
+    VALUES (?, ?, ?, ?, ?);
+    """, [(s, c, sector_map[sec], st, plant) for s, c, sec, st, _, plant in STOCK_LIST])
     conn.commit()
-    
-    # 4. Seed Transactions (280 transactions over the past 365 days)
-    cursor.execute("SELECT book_id FROM books;")
-    book_ids = [row[0] for row in cursor.fetchall()]
-    
-    cursor.execute("SELECT student_id FROM students;")
-    student_ids = [row[0] for row in cursor.fetchall()]
-    
-    today = datetime.now()
-    transactions_data = []
-    
-    # We will keep track of currently active issues to update available_copies accurately
-    active_issues_per_book = {b_id: 0 for b_id in book_ids}
-    
-    for _ in range(280):
-        b_id = random.choice(book_ids)
-        s_id = random.choice(student_ids)
-        
-        # Issue date between 365 days ago and 2 days ago
-        days_ago = random.randint(2, 365)
-        issue_date_dt = today - timedelta(days=days_ago)
-        issue_date_str = issue_date_dt.strftime("%Y-%m-%d")
-        
-        due_date_dt = issue_date_dt + timedelta(days=14)
-        due_date_str = due_date_dt.strftime("%Y-%m-%d")
-        
-        # Status outcome:
-        # 70% Returned on-time or early
-        # 20% Returned late (overdue fine)
-        # 10% Active issue (not returned yet)
-        status_rand = random.random()
-        
-        if status_rand < 0.70:
-            # Returned on or before due date
-            kept_days = random.randint(1, 14)
-            ret_dt = issue_date_dt + timedelta(days=kept_days)
-            # Ensure return date is not in future
-            if ret_dt > today:
-                ret_dt = today
-            ret_date_str = ret_dt.strftime("%Y-%m-%d")
-            fine = 0.0
-        elif status_rand < 0.90:
-            # Returned late (overdue)
-            kept_days = random.randint(15, 45)
-            ret_dt = issue_date_dt + timedelta(days=kept_days)
-            if ret_dt > today:
-                ret_dt = today
-            ret_date_str = ret_dt.strftime("%Y-%m-%d")
-            overdue_days = max(0, (ret_dt - due_date_dt).days)
-            fine = float(overdue_days * 5.0)  # ₹5 per overdue day
+    cursor.execute("SELECT stock_id, symbol FROM stocks;")
+    stock_ids = {sym: sid for sid, sym in cursor.fetchall()}
+
+    # 4. Seed Price History: daily return = market move x beta + sector move + company move
+    dates = trading_dates()
+    n = len(dates)
+    market = 0.0004 + 0.008 * rng.standard_t(4, n) / math.sqrt(2)
+    sector_moves = {sec: SECTOR_PROFILE[sec][1] * rng.standard_t(4, n) / math.sqrt(2) for sec in SECTORS}
+    quality = {}
+    closes_by_stock = {}
+    price_rows = []
+    for symbol, _, sector, _, start_price, plant in STOCK_LIST:
+        sid = stock_ids[symbol]
+        mu, _, s_stock = SECTOR_PROFILE[sector]
+        q = float(rng.uniform(-1, 1)) if plant else 0.0
+        quality[sid] = q
+        beta = rng.uniform(0.7, 1.3)
+        drift = (mu + 0.15 * q + rng.normal(0, 0.06)) / 252 - 0.0004 * beta
+        returns = drift + beta * market + sector_moves[sector] + s_stock * rng.standard_t(4, n) / math.sqrt(2)
+        opens, highs, lows, closes, volumes = build_ohlcv(rng, returns, start_price, rng.uniform(5e5, 8e6))
+        closes_by_stock[sid] = closes
+        price_rows += [(sid, d, round(o, 2), round(h, 2), round(l, 2), round(c, 2), int(v))
+                       for d, o, h, l, c, v in zip(dates, opens, highs, lows, closes, volumes)]
+
+    # Data-feed gaps: about 1% of closing prices are missing (cleaned later with forward fill)
+    gap_rows = set(rng.choice(len(price_rows), size=len(price_rows) // 100, replace=False))
+    price_rows = [r[:5] + (None,) + r[6:] if i in gap_rows and r[1] not in (dates[0], dates[-1]) else r
+                  for i, r in enumerate(price_rows)]
+    cursor.executemany("""
+    INSERT INTO price_history (stock_id, trade_date, open, high, low, close, volume)
+    VALUES (?, ?, ?, ?, ?, ?, ?);
+    """, price_rows)
+    conn.commit()
+
+    # 5. Seed Trades (300 buy orders; most are sold later, some are still open positions)
+    # Conservative investors prefer defensive sectors and hold longer; aggressive ones trade cyclicals quickly
+    preferred = {1: ["FMCG", "Banking", "Pharma"], 2: ["Banking", "IT", "FMCG"],
+                 3: ["IT", "Auto", "Pharma"], 4: ["Auto", "Energy", "IT"]}
+    hold_range = {1: (30, 200), 2: (20, 150), 3: (10, 100), 4: (2, 45)}
+    sector_stocks = {sec: [stock_ids[s] for s, _, sc, _, _, _ in STOCK_LIST if sc == sec] for sec in SECTORS}
+    cursor.execute("SELECT investor_id, risk_profile FROM investors;")
+    investors = cursor.fetchall()
+
+    trades_data = []
+    for _ in range(300):
+        inv_id, risk = random.choice(investors)
+        sector = random.choice(preferred[risk]) if random.random() < 0.7 else random.choice(SECTORS)
+        sid = random.choice(sector_stocks[sector])
+        buy_i = random.randint(0, n - 6)
+        buy_price = round(float(closes_by_stock[sid][buy_i]), 2)
+        # Trade sizes are log-normal: many small orders and a few very large ones (right-skewed)
+        quantity = max(1, int(random.lognormvariate(math.log(50000), 0.9) * (0.6 + 0.4 * risk) / buy_price))
+        stop_loss = round(buy_price * (1 - STOP_LOSS_PCT), 2)
+
+        sell_i = buy_i + random.randint(*hold_range[risk])
+        if random.random() < 0.8 and sell_i < n:
+            sell_date, sell_price = dates[sell_i], round(float(closes_by_stock[sid][sell_i]), 2)
         else:
-            # Currently active issue (not returned yet)
-            # Only if issue date was not too far in past, or simulates an unreturned book
-            ret_date_str = None
-            fine = 0.0
-            active_issues_per_book[b_id] += 1
-            
-        transactions_data.append((b_id, s_id, issue_date_str, due_date_str, ret_date_str, fine))
-        
+            sell_date, sell_price = None, None
+        trades_data.append((sid, inv_id, dates[buy_i], buy_price, quantity, stop_loss, sell_date, sell_price))
+
     cursor.executemany("""
-    INSERT INTO transactions (book_id, student_id, issue_date, due_date, return_date, fine_amount)
-    VALUES (?, ?, ?, ?, ?, ?);
-    """, transactions_data)
-    
-    # Update available_copies for books based on active issues
-    for b_id, active_cnt in active_issues_per_book.items():
-        cursor.execute("UPDATE books SET available_copies = MAX(0, total_copies - ?) WHERE book_id = ?;", (active_cnt, b_id))
-        
+    INSERT INTO trades (stock_id, investor_id, buy_date, buy_price, quantity, stop_loss, sell_date, sell_price)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+    """, trades_data)
     conn.commit()
-    seed_shipments(conn)
+
+    # 6. Seed Shipments (Supply Chain case study)
+    seed_shipments(conn, quality)
     conn.close()
 
 if __name__ == "__main__":
     print("Initializing database schema...")
     init_db()
-    print("Seeding synthetic data...")
+    print("Seeding synthetic market data...")
     seed_db()
-    print("Database setup complete! 'library.db' created successfully.")
+    print(f"Database setup complete! '{DB_NAME}' created successfully.")

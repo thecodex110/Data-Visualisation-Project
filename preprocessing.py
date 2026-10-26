@@ -3,7 +3,9 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-DB_NAME = "library.db"
+from db_setup import RISK_PROFILES
+
+DB_NAME = "stock_market.db"
 
 def get_connection(db_path=DB_NAME):
     return sqlite3.connect(db_path)
@@ -11,321 +13,422 @@ def get_connection(db_path=DB_NAME):
 def load_raw_data(db_path=DB_NAME):
     """Loads raw dataframes from sqlite database."""
     conn = get_connection(db_path)
-    
-    depts_df = pd.read_sql_query("SELECT * FROM departments;", conn)
-    students_df = pd.read_sql_query("SELECT * FROM students;", conn)
-    books_df = pd.read_sql_query("SELECT * FROM books;", conn)
-    txns_df = pd.read_sql_query("SELECT * FROM transactions;", conn)
-    
-    conn.close()
-    return depts_df, students_df, books_df, txns_df
 
-def get_cleaned_transactions(db_path=DB_NAME):
+    sectors_df = pd.read_sql_query("SELECT * FROM sectors;", conn)
+    investors_df = pd.read_sql_query("SELECT * FROM investors;", conn)
+    stocks_df = pd.read_sql_query("SELECT * FROM stocks;", conn)
+    trades_df = pd.read_sql_query("SELECT * FROM trades;", conn)
+
+    conn.close()
+    return sectors_df, investors_df, stocks_df, trades_df
+
+def get_clean_prices(db_path=DB_NAME):
     """
-    Cleans raw transaction data, calculates durations, handles missing return dates,
-    and enriches with student and book details.
+    Cleans the daily price feed: text dates -> datetime, missing closing prices forward-filled
+    per stock, then daily return (%) is calculated. Enriched with stock and sector details.
     """
     conn = get_connection(db_path)
-    
-    query = """
-    SELECT 
-        t.txn_id,
-        t.book_id,
-        b.title AS book_title,
-        b.author AS book_author,
-        b.total_copies,
-        b.available_copies,
-        b.publisher_state,
-        t.student_id,
-        s.name AS student_name,
-        s.year AS student_year,
-        s.home_state AS student_home_state,
-        d.dept_id,
-        d.dept_name,
-        t.issue_date,
-        t.due_date,
-        t.return_date,
-        t.fine_amount
-    FROM transactions t
-    JOIN books b ON t.book_id = b.book_id
-    JOIN students s ON t.student_id = s.student_id
-    JOIN departments d ON b.dept_id = d.dept_id;
-    """
-    
-    df = pd.read_sql_query(query, conn)
+    df = pd.read_sql_query("""
+        SELECT p.stock_id, s.symbol, s.company_name, sec.sector_name,
+               p.trade_date, p.open, p.high, p.low, p.close, p.volume
+        FROM price_history p
+        JOIN stocks s ON p.stock_id = s.stock_id
+        JOIN sectors sec ON s.sector_id = sec.sector_id
+        ORDER BY p.stock_id, p.trade_date;
+    """, conn)
     conn.close()
-    
-    today = pd.Timestamp(datetime.now().date())
-    
-    # Convert dates
-    df['issue_date_dt'] = pd.to_datetime(df['issue_date'])
-    df['due_date_dt'] = pd.to_datetime(df['due_date'])
-    df['return_date_dt'] = pd.to_datetime(df['return_date'])
-    
-    # Issue Month string (YYYY-MM)
-    df['issue_month'] = df['issue_date_dt'].dt.to_period('M').astype(str)
-    
-    # Calculate days kept and overdue days
-    is_returned = df['return_date_dt'].notnull()
-    
-    # Days kept
-    df['days_kept'] = np.where(
-        is_returned,
-        (df['return_date_dt'] - df['issue_date_dt']).dt.days,
-        (today - df['issue_date_dt']).dt.days
-    )
-    df['days_kept'] = df['days_kept'].clip(lower=1) # at least 1 day
-    
-    # Overdue days
-    df['overdue_days'] = np.where(
-        is_returned,
-        (df['return_date_dt'] - df['due_date_dt']).dt.days,
-        (today - df['due_date_dt']).dt.days
-    )
-    df['overdue_days'] = df['overdue_days'].clip(lower=0)
-    
-    # Recalculate fine amount accurately
-    df['calculated_fine'] = df['overdue_days'] * 5.0
-    # Use max of recorded fine or calculated fine
-    df['effective_fine'] = np.maximum(df['fine_amount'], df['calculated_fine'])
-    
-    # Status categorisation
-    conditions = [
-        (~is_returned) & (df['overdue_days'] > 0),
-        (~is_returned) & (df['overdue_days'] == 0),
-        (is_returned) & (df['overdue_days'] > 0),
-        (is_returned) & (df['overdue_days'] == 0)
-    ]
-    choices = ['Active Overdue', 'Active On-Time', 'Returned Overdue', 'Returned On-Time']
-    df['status'] = np.select(conditions, choices, default='Unknown')
-    
-    # Simplified Status for high-level charts (Issued, Returned, Overdue)
-    df['simple_status'] = np.where(
-        df['status'].str.contains('Overdue'), 'Overdue',
-        np.where(df['status'].str.contains('Returned'), 'Returned', 'Active Issued')
-    )
-    
-    # Display friendly return date string
-    df['return_date_display'] = df['return_date'].fillna('Active Issue')
-    
+
+    df['date'] = pd.to_datetime(df['trade_date'])
+    df['close_was_missing'] = df['close'].isnull()
+    # Forward fill = "if today's price is missing, use the last known price of the same stock"
+    df['close'] = df.groupby('stock_id')['close'].ffill().bfill()
+    df['daily_return'] = df.groupby('stock_id')['close'].pct_change() * 100
+    df['month'] = df['date'].dt.to_period('M').astype(str)
     return df
 
-def get_department_aggregates(db_path=DB_NAME):
-    """Aggregates book count, total copies, active issues, and fines by Department."""
-    txns = get_cleaned_transactions(db_path)
-    depts, students, books, _ = load_raw_data(db_path)
-    
-    # Books per department
-    books_per_dept = books.groupby('dept_id').agg(
-        total_unique_titles=('book_id', 'count'),
-        total_copies=('total_copies', 'sum'),
-        available_copies=('available_copies', 'sum')
-    ).reset_index()
-    
-    books_per_dept = pd.merge(depts, books_per_dept, on='dept_id', how='left').fillna(0)
-    
-    # Transaction counts per department
-    txn_counts = txns.groupby(['dept_name', 'simple_status']).size().unstack(fill_value=0).reset_index()
-    for col in ['Active Issued', 'Returned', 'Overdue']:
-        if col not in txn_counts.columns:
-            txn_counts[col] = 0
-            
-    txn_counts['total_transactions'] = txn_counts['Active Issued'] + txn_counts['Returned'] + txn_counts['Overdue']
-    
-    summary = pd.merge(books_per_dept, txn_counts, left_on='dept_name', right_on='dept_name', how='left').fillna(0)
+def get_latest_prices(db_path=DB_NAME):
+    """Last cleaned closing price of every stock (Series indexed by stock_id)."""
+    prices = get_clean_prices(db_path)
+    return prices.groupby('stock_id')['close'].last()
+
+def _max_drawdown(close):
+    """Largest fall (%) from a previous peak."""
+    return float(((close / close.cummax()) - 1).min() * 100)
+
+def get_market_index(db_path=DB_NAME):
+    """Equal-weight market index (base 1000) built from the average daily return of all stocks."""
+    prices = get_clean_prices(db_path)
+    daily = prices.groupby('date').agg(avg_return=('daily_return', 'mean'), volume=('volume', 'sum')).reset_index()
+    daily['avg_return'] = daily['avg_return'].fillna(0)
+    daily['index_level'] = 1000 * (1 + daily['avg_return'] / 100).cumprod()
+    daily['ma_20'] = daily['index_level'].rolling(20, min_periods=1).mean()
+    daily['ma_50'] = daily['index_level'].rolling(50, min_periods=1).mean()
+    daily['volatility_20d'] = daily['avg_return'].rolling(20, min_periods=5).std() * np.sqrt(252)
+    daily['month'] = daily['date'].dt.to_period('M').astype(str)
+    return daily
+
+def get_sector_index(db_path=DB_NAME):
+    """Sector indices (base 100): average daily return of the stocks in each sector, compounded."""
+    prices = get_clean_prices(db_path)
+    sec = prices.groupby(['date', 'sector_name'])['daily_return'].mean().unstack().fillna(0)
+    return 100 * (1 + sec / 100).cumprod()
+
+def get_stock_summary(db_path=DB_NAME):
+    """One row per stock: last price, 1-day and 1-year return, volatility, drawdown, beta, moving averages."""
+    prices = get_clean_prices(db_path)
+    market = get_market_index(db_path).set_index('date')['avg_return']
+    rows = []
+    for sid, g in prices.groupby('stock_id'):
+        close = g['close'].reset_index(drop=True)
+        ret = g.set_index('date')['daily_return'].dropna()
+        both = pd.concat([ret, market], axis=1, join='inner').dropna()
+        beta = both.iloc[:, 0].cov(both.iloc[:, 1]) / both.iloc[:, 1].var() if len(both) > 5 else 1.0
+        rows.append({
+            'stock_id': sid, 'symbol': g['symbol'].iloc[0], 'company_name': g['company_name'].iloc[0],
+            'sector_name': g['sector_name'].iloc[0],
+            'last_close': close.iloc[-1],
+            'change_1d': (close.iloc[-1] / close.iloc[-2] - 1) * 100 if len(close) > 1 else 0.0,
+            'return_1y': (close.iloc[-1] / close.iloc[0] - 1) * 100,
+            'volatility': ret.std() * np.sqrt(252),
+            'max_drawdown': _max_drawdown(close),
+            'avg_volume': g['volume'].mean(),
+            'beta': beta,
+            'high_52w': g['high'].max(), 'low_52w': g['low'].min(),
+            'dma_20': close.tail(20).mean(), 'dma_50': close.tail(50).mean(),
+        })
+    summary = pd.DataFrame(rows)
+    summary['above_50dma'] = summary['last_close'] > summary['dma_50']
     return summary
 
-def get_author_aggregates(db_path=DB_NAME):
-    """Aggregates book count, total copies, and borrow volume by Author."""
-    _, _, books, _ = load_raw_data(db_path)
-    txns = get_cleaned_transactions(db_path)
-    
-    author_books = books.groupby('author').agg(
-        book_titles=('book_id', 'count'),
-        total_copies=('total_copies', 'sum')
-    ).reset_index()
-    
-    author_txns = txns.groupby('book_author').agg(
-        total_borrowed=('txn_id', 'count')
-    ).reset_index().rename(columns={'book_author': 'author'})
-    
-    author_summary = pd.merge(author_books, author_txns, on='author', how='left').fillna(0)
-    author_summary['total_borrowed'] = author_summary['total_borrowed'].astype(int)
-    return author_summary.sort_values('total_borrowed', ascending=False)
+def get_cleaned_trades(db_path=DB_NAME):
+    """
+    Cleans raw trade data, handles open positions (missing sell date), calculates holding days,
+    profit/loss and return %, and enriches with investor, stock and sector details.
+    """
+    conn = get_connection(db_path)
 
-def get_monthly_matrix(db_path=DB_NAME):
-    """Pivots transactions into Department x Month issue counts."""
-    txns = get_cleaned_transactions(db_path)
-    pivot = txns.pivot_table(
-        index='dept_name',
-        columns='issue_month',
-        values='txn_id',
-        aggfunc='count',
-        fill_value=0
+    query = """
+    SELECT
+        t.trade_id,
+        t.stock_id,
+        s.symbol,
+        s.company_name,
+        sec.sector_id,
+        sec.sector_name,
+        t.investor_id,
+        i.name AS investor_name,
+        i.risk_profile,
+        i.home_state AS investor_state,
+        t.buy_date,
+        t.buy_price,
+        t.quantity,
+        t.stop_loss,
+        t.sell_date,
+        t.sell_price
+    FROM trades t
+    JOIN stocks s ON t.stock_id = s.stock_id
+    JOIN investors i ON t.investor_id = i.investor_id
+    JOIN sectors sec ON s.sector_id = sec.sector_id;
+    """
+
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+
+    latest = get_latest_prices(db_path)
+    today = pd.Timestamp(datetime.now().date())
+
+    # Convert dates
+    df['buy_date_dt'] = pd.to_datetime(df['buy_date'])
+    df['sell_date_dt'] = pd.to_datetime(df['sell_date'])
+    df['buy_month'] = df['buy_date_dt'].dt.to_period('M').astype(str)
+    is_sold = df['sell_date_dt'].notnull()
+
+    # Open position -> value it at today's market price
+    df['current_price'] = df['stock_id'].map(latest)
+    df['exit_price'] = np.where(is_sold, df['sell_price'], df['current_price'])
+
+    # Holding days (sell date or today) - at least 1 day
+    df['holding_days'] = np.where(
+        is_sold,
+        (df['sell_date_dt'] - df['buy_date_dt']).dt.days,
+        (today - df['buy_date_dt']).dt.days
     )
+    df['holding_days'] = df['holding_days'].clip(lower=1)
+
+    # Money columns
+    df['invested'] = df['buy_price'] * df['quantity']
+    df['pnl'] = (df['exit_price'] - df['buy_price']) * df['quantity']
+    df['return_pct'] = (df['exit_price'] / df['buy_price'] - 1) * 100
+    df['stop_loss_hit'] = (~is_sold) & (df['current_price'] <= df['stop_loss'])
+    df['risk_label'] = df['risk_profile'].map(RISK_PROFILES)
+
+    # Status categorisation
+    conditions = [
+        is_sold & (df['pnl'] > 0),
+        is_sold & (df['pnl'] <= 0),
+        (~is_sold) & (df['pnl'] > 0),
+        (~is_sold) & (df['pnl'] <= 0)
+    ]
+    choices = ['Profit Booked', 'Loss Booked', 'Open - In Profit', 'Open - In Loss']
+    df['status'] = np.select(conditions, choices, default='Unknown')
+
+    # Simplified Status for high-level charts (Profit Booked, Loss Booked, Open)
+    df['simple_status'] = np.where(df['status'].str.startswith('Open'), 'Open', df['status'])
+
+    # Display friendly sell date string
+    df['sell_date_display'] = df['sell_date'].fillna('Open')
+
+    return df
+
+def get_sector_aggregates(db_path=DB_NAME):
+    """Aggregates stock count, traded value, trade outcomes and 1-year return by Sector."""
+    trades = get_cleaned_trades(db_path)
+    sectors = load_raw_data(db_path)[0]
+    stocks = get_stock_summary(db_path)
+
+    per_sector = stocks.groupby('sector_name').agg(
+        stocks=('stock_id', 'count'),
+        avg_return_1y=('return_1y', 'mean'),
+        avg_volatility=('volatility', 'mean')
+    ).reset_index()
+    per_sector = pd.merge(sectors, per_sector, on='sector_name', how='left').fillna(0)
+
+    # Trade counts per sector
+    counts = trades.groupby(['sector_name', 'simple_status']).size().unstack(fill_value=0).reset_index()
+    for col in ['Profit Booked', 'Loss Booked', 'Open']:
+        if col not in counts.columns:
+            counts[col] = 0
+    counts['total_trades'] = counts['Profit Booked'] + counts['Loss Booked'] + counts['Open']
+    value = trades.groupby('sector_name').agg(traded_value=('invested', 'sum'), total_pnl=('pnl', 'sum')).reset_index()
+
+    summary = per_sector.merge(counts, on='sector_name', how='left').merge(value, on='sector_name', how='left').fillna(0)
+    summary['traded_value_lakh'] = summary['traded_value'] / 1e5
+    return summary
+
+def get_stock_trade_aggregates(db_path=DB_NAME):
+    """Aggregates number of trades and traded value by Stock (most traded stocks)."""
+    trades = get_cleaned_trades(db_path)
+    agg = trades.groupby(['symbol', 'sector_name']).agg(
+        total_trades=('trade_id', 'count'),
+        traded_value=('invested', 'sum'),
+        total_pnl=('pnl', 'sum')
+    ).reset_index()
+    agg['traded_value_lakh'] = agg['traded_value'] / 1e5
+    return agg.sort_values('total_trades', ascending=False)
+
+def get_monthly_sector_returns(db_path=DB_NAME):
+    """Pivots prices into Sector x Month average monthly return (%)."""
+    prices = get_clean_prices(db_path)
+    monthly = prices.groupby(['stock_id', 'sector_name', 'month'])['close'].last().reset_index()
+    monthly['monthly_return'] = monthly.groupby('stock_id')['close'].pct_change() * 100
+    pivot = monthly.dropna().pivot_table(index='sector_name', columns='month', values='monthly_return', aggfunc='mean')
     # Sort months chronologically
-    sorted_cols = sorted(pivot.columns)
-    return pivot[sorted_cols]
+    return pivot[sorted(pivot.columns)]
+
+def get_monthly_stock_returns(db_path=DB_NAME):
+    """One row per stock per month: monthly return (%) - used for many-distribution charts."""
+    prices = get_clean_prices(db_path)
+    monthly = prices.groupby(['stock_id', 'symbol', 'sector_name', 'month'])['close'].last().reset_index()
+    monthly['monthly_return'] = monthly.groupby('stock_id')['close'].pct_change() * 100
+    return monthly.dropna()
 
 def get_monthly_timeseries(db_path=DB_NAME):
-    """Aggregates monthly issue count, return count, and total fines for time series analysis."""
-    txns = get_cleaned_transactions(db_path)
-    
-    monthly = txns.groupby('issue_month').agg(
-        issued_count=('txn_id', 'count'),
-        returned_count=('return_date_dt', lambda x: x.notnull().sum()),
-        overdue_count=('overdue_days', lambda x: (x > 0).sum()),
-        total_fines=('effective_fine', 'sum')
-    ).reset_index()
-    
-    monthly['issue_month_dt'] = pd.to_datetime(monthly['issue_month'] + '-01')
-    monthly = monthly.sort_values('issue_month_dt').reset_index(drop=True)
-    
+    """Aggregates monthly trades, sells, traded value, realised P&L and month-end index level."""
+    trades = get_cleaned_trades(db_path)
+    index = get_market_index(db_path)
+
+    monthly = trades.groupby('buy_month').agg(
+        buy_count=('trade_id', 'count'),
+        traded_value=('invested', 'sum')
+    ).reset_index().rename(columns={'buy_month': 'month'})
+
+    sold = trades[trades['sell_date_dt'].notnull()].copy()
+    sold['month'] = sold['sell_date_dt'].dt.to_period('M').astype(str)
+    sells = sold.groupby('month').agg(sell_count=('trade_id', 'count'), realised_pnl=('pnl', 'sum')).reset_index()
+
+    idx = index.groupby('month').agg(index_close=('index_level', 'last'), volume=('volume', 'sum')).reset_index()
+    monthly = idx.merge(monthly, on='month', how='left').merge(sells, on='month', how='left').fillna(0)
+    monthly['month_dt'] = pd.to_datetime(monthly['month'] + '-01')
+    monthly = monthly.sort_values('month_dt').reset_index(drop=True)
+
     # Rolling 3-month average
-    monthly['rolling_3m_issues'] = monthly['issued_count'].rolling(window=3, min_periods=1).mean()
-    
+    monthly['rolling_3m_buys'] = monthly['buy_count'].rolling(window=3, min_periods=1).mean()
     return monthly
 
-def get_student_feature_matrix(db_path=DB_NAME):
-    """
-    Creates a student-level feature matrix showing count of books borrowed per department,
-    used for PCA dimension reduction clustering.
-    """
-    txns = get_cleaned_transactions(db_path)
-    students_df = load_raw_data(db_path)[1]
-    
-    pivot = txns.pivot_table(
-        index='student_id',
-        columns='dept_name',
-        values='txn_id',
-        aggfunc='count',
-        fill_value=0
-    )
-    
-    # Merge back student metadata
-    student_matrix = pd.merge(students_df[['student_id', 'name', 'dept_id', 'home_state']], pivot, on='student_id', how='left').fillna(0)
-    depts_map = dict(load_raw_data(db_path)[0][['dept_id', 'dept_name']].values)
-    student_matrix['primary_dept'] = student_matrix['dept_id'].map(depts_map)
-    
-    return student_matrix
+def get_investor_summary(db_path=DB_NAME):
+    """One row per investor: trades, average holding days, win rate, total invested and total P&L."""
+    trades = get_cleaned_trades(db_path)
+    investors = load_raw_data(db_path)[1]
+
+    agg = trades.groupby('investor_id').agg(
+        total_trades=('trade_id', 'count'),
+        avg_holding_days=('holding_days', 'mean'),
+        win_rate=('pnl', lambda x: (x > 0).mean() * 100),
+        total_invested=('invested', 'sum'),
+        total_pnl=('pnl', 'sum')
+    ).reset_index()
+
+    summary = pd.merge(investors, agg, on='investor_id', how='left').fillna(0)
+    summary['total_invested_lakh'] = summary['total_invested'] / 1e5
+    summary['total_pnl_lakh'] = summary['total_pnl'] / 1e5
+    summary['risk_label'] = summary['risk_profile'].map(RISK_PROFILES)
+    return summary
+
+def get_stock_return_matrix(db_path=DB_NAME):
+    """Dates x stocks matrix of daily returns (used for PCA dimension reduction)."""
+    prices = get_clean_prices(db_path)
+    matrix = prices.pivot_table(index='date', columns='symbol', values='daily_return').dropna()
+    sectors = prices.drop_duplicates('symbol').set_index('symbol')['sector_name']
+    return matrix, sectors
 
 def get_state_geospatial_summary(db_path=DB_NAME):
-    """Aggregates student count and borrowing volume by Indian home state."""
-    txns = get_cleaned_transactions(db_path)
-    students_df = load_raw_data(db_path)[1]
-    
-    student_counts = students_df.groupby('home_state').agg(
-        student_count=('student_id', 'count')
-    ).reset_index()
-    
-    txn_counts = txns.groupby('student_home_state').agg(
-        total_issues=('txn_id', 'count'),
-        total_fines=('effective_fine', 'sum')
-    ).reset_index().rename(columns={'student_home_state': 'home_state'})
-    
-    geo_summary = pd.merge(student_counts, txn_counts, on='home_state', how='left').fillna(0)
-    return geo_summary
+    """Aggregates investor count, traded value and P&L by Indian home state."""
+    trades = get_cleaned_trades(db_path)
+    investors = load_raw_data(db_path)[1]
 
-def get_student_summary(db_path=DB_NAME):
-    """One row per student: loan count, average days kept, overdue loans and total fines."""
-    txns = get_cleaned_transactions(db_path)
-    depts, students, _, _ = load_raw_data(db_path)
-    
-    agg = txns.groupby('student_id').agg(
-        total_loans=('txn_id', 'count'),
-        avg_days_kept=('days_kept', 'mean'),
-        overdue_loans=('overdue_days', lambda x: (x > 0).sum()),
-        total_fines=('effective_fine', 'sum')
-    ).reset_index()
-    
-    summary = pd.merge(students, agg, on='student_id', how='left').fillna(0)
-    summary['primary_dept'] = summary['dept_id'].map(dict(depts[['dept_id', 'dept_name']].values))
-    return summary
+    counts = investors.groupby('home_state').agg(investor_count=('investor_id', 'count')).reset_index()
+    value = trades.groupby('investor_state').agg(
+        total_trades=('trade_id', 'count'),
+        traded_value=('invested', 'sum'),
+        total_pnl=('pnl', 'sum')
+    ).reset_index().rename(columns={'investor_state': 'home_state'})
+
+    geo = pd.merge(counts, value, on='home_state', how='left').fillna(0)
+    geo['traded_value_lakh'] = geo['traded_value'] / 1e5
+    return geo
+
+def analyse_stock(stock_id, db_path=DB_NAME):
+    """Technical analysis of one stock: returns, volatility, moving averages, RSI and a buy/sell signal."""
+    prices = get_clean_prices(db_path)
+    g = prices[prices['stock_id'] == stock_id].reset_index(drop=True)
+    if g.empty:
+        return None, None
+    g['dma_20'] = g['close'].rolling(20, min_periods=1).mean()
+    g['dma_50'] = g['close'].rolling(50, min_periods=1).mean()
+
+    # RSI(14): average gain vs average loss of the last 14 days (above 70 = overbought, below 30 = oversold)
+    change = g['close'].diff()
+    gain = change.clip(lower=0).rolling(14, min_periods=1).mean()
+    loss = (-change.clip(upper=0)).rolling(14, min_periods=1).mean()
+    g['rsi'] = 100 - 100 / (1 + gain / loss.replace(0, np.nan))
+    g['rsi'] = g['rsi'].fillna(50)
+
+    last = g.iloc[-1]
+    def ret(days):
+        return (last['close'] / g['close'].iloc[max(0, len(g) - 1 - days)] - 1) * 100
+
+    if last['close'] > last['dma_50'] and last['dma_20'] > last['dma_50']:
+        signal = "BULLISH  (price above 50-DMA and 20-DMA above 50-DMA)"
+    elif last['close'] < last['dma_50'] and last['dma_20'] < last['dma_50']:
+        signal = "BEARISH  (price below 50-DMA and 20-DMA below 50-DMA)"
+    else:
+        signal = "NEUTRAL  (moving averages are mixed)"
+
+    report = {
+        'symbol': last['symbol'], 'company': last['company_name'], 'sector': last['sector_name'],
+        'last_close': last['close'], 'last_date': last['trade_date'],
+        'ret_1d': ret(1), 'ret_1m': ret(21), 'ret_3m': ret(63), 'ret_1y': ret(len(g) - 1),
+        'high_52w': g['high'].max(), 'low_52w': g['low'].min(),
+        'volatility': g['daily_return'].std() * np.sqrt(252),
+        'max_drawdown': _max_drawdown(g['close']),
+        'dma_20': last['dma_20'], 'dma_50': last['dma_50'], 'rsi': last['rsi'],
+        'avg_volume': g['volume'].tail(20).mean(), 'signal': signal,
+    }
+    return report, g
 
 def print_cleaning_report(db_path=DB_NAME):
     """Terminal report of the cleaning + aggregation pipeline (raw -> clean -> aggregated)."""
-    depts, students, books, txns = load_raw_data(db_path)
+    sectors, investors, stocks, trades = load_raw_data(db_path)
+    conn = get_connection(db_path)
+    raw_prices = pd.read_sql_query("SELECT * FROM price_history;", conn)
+    conn.close()
     print("\n" + "=" * 70)
     print("          DATA CLEANING & AGGREGATION REPORT")
     print("=" * 70)
-    
+
     print("\n[1] RAW TABLES (rows x columns)")
-    for name, t in [('departments', depts), ('students', students), ('books', books), ('transactions', txns)]:
-        print(f"    {name:<13}: {t.shape[0]:>4} x {t.shape[1]}")
-    
-    print("\n[2] MISSING VALUES IN RAW transactions")
-    for col, n in txns.isnull().sum().items():
+    for name, t in [('sectors', sectors), ('investors', investors), ('stocks', stocks),
+                    ('price_history', raw_prices), ('trades', trades)]:
+        print(f"    {name:<14}: {t.shape[0]:>5} x {t.shape[1]}")
+
+    print("\n[2] MISSING VALUES IN RAW DATA")
+    print(f"    price_history.close: {raw_prices['close'].isnull().sum()} nulls  -> data-feed gaps (price not received)")
+    for col, n in trades.isnull().sum().items():
         if n:
-            print(f"    {col:<13}: {n} nulls  -> meaning: book not returned yet (active loan)")
-    print(f"    duplicate rows: {txns.duplicated().sum()}")
-    
-    clean = get_cleaned_transactions(db_path)
+            print(f"    trades.{col:<11}: {n} nulls  -> meaning: position not sold yet (open position)")
+    print(f"    duplicate trade rows: {trades.duplicated().sum()}")
+
+    clean = get_cleaned_trades(db_path)
+    prices = get_clean_prices(db_path)
     print("\n[3] CLEANING STEPS APPLIED")
-    print("    - issue/due/return dates converted from text to datetime")
-    print("    - null return_date kept as active loan (display: 'Active Issue')")
-    print("    - days_kept    = return (or today) - issue, clipped at minimum 1")
-    print("    - overdue_days = return (or today) - due,   clipped at minimum 0")
-    print("    - effective_fine = max(recorded fine, overdue_days x Rs 5)")
-    print("    - status / simple_status labels derived from the two rules above")
-    print(f"    cleaned shape: {clean.shape[0]} x {clean.shape[1]} (joined with books, students, departments)")
-    
-    print("\n[4] AGGREGATION: loans by department x status")
-    print(clean.pivot_table(index='dept_name', columns='simple_status', values='txn_id',
+    print("    - trade_date / buy_date / sell_date converted from text to datetime")
+    print(f"    - missing closing prices forward-filled per stock -> nulls left: {prices['close'].isnull().sum()}")
+    print("    - daily_return (%) = today's close / yesterday's close - 1")
+    print("    - null sell_date kept as OPEN position, valued at today's price")
+    print("    - holding_days = sell (or today) - buy, clipped at minimum 1")
+    print("    - pnl = (exit price - buy price) x quantity ; return_pct = exit / buy - 1")
+    print("    - status / simple_status labels derived from sold/open and profit/loss")
+    print(f"    cleaned trades shape: {clean.shape[0]} x {clean.shape[1]} (joined with stocks, investors, sectors)")
+
+    print("\n[4] AGGREGATION: trades by sector x status")
+    print(clean.pivot_table(index='sector_name', columns='simple_status', values='trade_id',
                             aggfunc='count', fill_value=0).to_string())
-    
-    print("\n[5] AGGREGATION: summary statistics of days_kept and fines")
-    print(clean[['days_kept', 'overdue_days', 'effective_fine']].describe().round(2).to_string())
+
+    print("\n[5] AGGREGATION: summary statistics of holding days, returns and daily returns")
+    stats_df = clean[['holding_days', 'return_pct', 'pnl']].describe()
+    stats_df['daily_return'] = prices['daily_return'].describe()
+    print(stats_df.round(2).to_string())
     print("=" * 70 + "\n")
 
-def get_library_kpis(dept_name=None, year=None, db_path=DB_NAME):
-    """Power BI style headline measures, optionally sliced by department and student year."""
-    txns = get_cleaned_transactions(db_path)
-    depts, _, books, _ = load_raw_data(db_path)
-    books = pd.merge(books, depts, on='dept_id')
-    if dept_name:
-        txns = txns[txns['dept_name'] == dept_name]
-        books = books[books['dept_name'] == dept_name]
-    if year:
-        txns = txns[txns['student_year'] == year]
-    
+def get_market_kpis(sector_name=None, risk_profile=None, db_path=DB_NAME):
+    """Power BI style headline measures, optionally sliced by sector and investor risk profile."""
+    trades = get_cleaned_trades(db_path)
+    stocks = get_stock_summary(db_path)
+    if sector_name:
+        trades = trades[trades['sector_name'] == sector_name]
+        stocks = stocks[stocks['sector_name'] == sector_name]
+    if risk_profile:
+        trades = trades[trades['risk_profile'] == risk_profile]
+
     this_month = pd.Timestamp(datetime.now().date()).to_period('M')
-    month_counts = txns['issue_date_dt'].dt.to_period('M').value_counts()
-    total_copies = int(books['total_copies'].sum())
-    on_loan = total_copies - int(books['available_copies'].sum())
-    active = txns[txns['return_date_dt'].isnull()]
-    
+    month_counts = trades['buy_date_dt'].dt.to_period('M').value_counts()
+    open_pos = trades[trades['sell_date_dt'].isnull()]
+    closed = trades[trades['sell_date_dt'].notnull()]
+
     return {
-        'titles': int(len(books)),
-        'total_copies': total_copies,
-        'on_loan': on_loan,
-        'utilization_pct': (on_loan / total_copies * 100) if total_copies else 0.0,
-        'total_loans': int(len(txns)),
-        'active_loans': int(len(active)),
-        'active_overdue': int((active['overdue_days'] > 0).sum()),
-        'overdue_rate_pct': float((txns['overdue_days'] > 0).mean() * 100) if len(txns) else 0.0,
-        'total_fines': float(txns['effective_fine'].sum()),
-        'issues_this_month': int(month_counts.get(this_month, 0)),
-        'issues_last_month': int(month_counts.get(this_month - 1, 0)),
+        'stocks': int(len(stocks)),
+        'investors': int(trades['investor_id'].nunique()),
+        'total_trades': int(len(trades)),
+        'open_positions': int(len(open_pos)),
+        'open_invested': float(open_pos['invested'].sum()),
+        'open_value': float((open_pos['current_price'] * open_pos['quantity']).sum()),
+        'unrealised_pnl': float(open_pos['pnl'].sum()),
+        'realised_pnl': float(closed['pnl'].sum()),
+        'win_rate_pct': float((closed['pnl'] > 0).mean() * 100) if len(closed) else 0.0,
+        'stop_loss_hits': int(open_pos['stop_loss_hit'].sum()),
+        'breadth_pct': float(stocks['above_50dma'].mean() * 100) if len(stocks) else 0.0,
+        'trades_this_month': int(month_counts.get(this_month, 0)),
+        'trades_last_month': int(month_counts.get(this_month - 1, 0)),
     }
 
 def get_cleaned_shipments(region=None, db_path=DB_NAME):
     """Cleans shipment logs: transit time, delay and delivery status (Supply Chain case study)."""
     conn = get_connection(db_path)
     df = pd.read_sql_query("""
-        SELECT sh.*, b.title AS book_title, d.dept_name
+        SELECT sh.*, s.symbol, s.company_name, sec.sector_name
         FROM shipments sh
-        JOIN books b ON sh.book_id = b.book_id
-        JOIN departments d ON b.dept_id = d.dept_id;
+        JOIN stocks s ON sh.stock_id = s.stock_id
+        JOIN sectors sec ON s.sector_id = sec.sector_id;
     """, conn)
     conn.close()
-    
+
     today = pd.Timestamp(datetime.now().date())
     df['dispatch_dt'] = pd.to_datetime(df['dispatch_date'])
     df['expected_dt'] = pd.to_datetime(df['expected_date'])
     df['delivery_dt'] = pd.to_datetime(df['delivery_date'])
     delivered = df['delivery_dt'].notnull()
     end = df['delivery_dt'].fillna(today)
-    
+
     df['transit_days'] = (end - df['dispatch_dt']).dt.days
     df['delay_days'] = (end - df['expected_dt']).dt.days.clip(lower=0)
     df['status'] = np.select(
@@ -338,10 +441,25 @@ def get_cleaned_shipments(region=None, db_path=DB_NAME):
         df = df[df['region'] == region]
     return df
 
+def get_company_logistics_scorecard(region=None, db_path=DB_NAME):
+    """Per company: shipments, on-time delivery % and the company's 1-year stock return."""
+    ship = get_cleaned_shipments(region, db_path)
+    delivered = ship[ship['status'].str.startswith('Delivered')]
+    score = delivered.groupby(['symbol', 'sector_name']).agg(
+        delivered=('shipment_id', 'count'),
+        on_time_pct=('status', lambda s: (s == 'Delivered On-Time').mean() * 100),
+        avg_delay=('delay_days', 'mean')
+    ).reset_index()
+    shipments = ship.groupby('symbol').size().rename('shipments')
+    score = score.merge(shipments, on='symbol')
+    returns = get_stock_summary(db_path).set_index('symbol')['return_1y']
+    score['return_1y'] = score['symbol'].map(returns)
+    return score.sort_values('on_time_pct', ascending=False)
+
 if __name__ == "__main__":
     print("Testing Preprocessing Module...")
-    df = get_cleaned_transactions()
-    print(f"Cleaned Transactions shape: {df.shape}")
-    print(df[['txn_id', 'student_name', 'book_title', 'days_kept', 'overdue_days', 'effective_fine', 'status']].head())
-    print("\nDepartment Aggregate:")
-    print(get_department_aggregates())
+    df = get_cleaned_trades()
+    print(f"Cleaned Trades shape: {df.shape}")
+    print(df[['trade_id', 'investor_name', 'symbol', 'holding_days', 'pnl', 'return_pct', 'status']].head())
+    print("\nSector Aggregate:")
+    print(get_sector_aggregates())

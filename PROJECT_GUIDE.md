@@ -1,5 +1,5 @@
 # 📘 Project Guide (Hinglish) — Stock Market Analysis System
-### Data Visualization Course Project · Pure Terminal (CLI) Project
+### Data Visualization Course Project · Terminal (CLI) + MarketLens Website
 
 Is ek file me sab kuch hai: project me **kya hai**, **kaise chalta hai**, **har terminal command ka matlab**, **har menu option ka matlab**, aur **syllabus ka har topic project me kahan hai**.
 
@@ -14,7 +14,8 @@ Is ek file me sab kuch hai: project me **kya hai**, **kaise chalta hai**, **har 
    - [3A. Code andar se kaise kaam karta hai (step-by-step)](#3a-code-andar-se-kaise-kaam-karta-hai-step-by-step)
 4. [Database ke 6 tables](#4-database-ke-6-tables)
 5. [Setup + har terminal command ka matlab](#5-setup--har-terminal-command-ka-matlab)
-6. [Main Menu (0–16) ka matlab](#6-main-menu-016-ka-matlab)
+6. [Main Menu (0–17) ka matlab](#6-main-menu-017-ka-matlab)
+   - [6A. MarketLens Website (option 17)](#6a-marketlens-website-option-17)
 7. [Visualization Menu (1–26) ka matlab](#7-visualization-menu-126-ka-matlab)
 8. [Syllabus → Project Mapping (har topic kahan hai)](#8-syllabus--project-mapping-har-topic-kahan-hai)
 9. [Power BI unit project me kaise cover hai](#9-power-bi-unit-project-me-kaise-cover-hai)
@@ -183,12 +184,15 @@ Data-Visualisation-Project-/
 ├── db_setup.py              # 🗄️ Database banata hai: 6 tables + simulated prices, investors, trades, deliveries
 ├── preprocessing.py         # ⚙️ Data cleaning + analysis: missing prices, returns, P&L, RSI, KPIs, deliveries
 ├── visualizations.py        # 🎨 Saare 26 charts (unit-wise) + CHART_MENU list + candlestick analysis chart
+├── web_app.py               # 🌐 Website server (option 17 / --web): pages + data API + buy/sell
+├── web_data.py              # 🌐 Website ka data + 26 charts ke SVG shapes banata hai
+├── web/                     # 🌐 Website ke pages (HTML), style.css, app.js, har page ki JS
 ├── stock_market.db          # 💾 SQLite database file (asli data yahan store hota hai)
 ├── stock_market_export.xlsx # 📊 Power BI ke liye Excel (6 sheets)
 ├── requirements.txt         # 📦 Kaunsi Python libraries install karni hain
 ├── POWERBI_GUIDE.md         # 📑 Power BI Desktop me dashboard banane ka step-by-step guide (Unit 6)
 ├── PROJECT_GUIDE.md         # 📘 Ye file
-├── MENU_OPTIONS_EXPLAINED.txt # Main menu ke 0–16 options + code kis file/function/line me
+├── MENU_OPTIONS_EXPLAINED.txt # Main menu ke 0–17 options + code kis file/function/line me
 ├── README.md                # Short intro
 ├── .gitignore               # Git ko batata hai venv/ aur __pycache__/ ignore karo
 └── charts/                  # 🖼️ Saare generated PNG charts yahan save hote hain
@@ -435,6 +439,7 @@ python3 main.py
 | `python3 main.py --chart 7` | Sirf chart number 7 banao aur Preview me dikhao (number `--list` se dekho). |
 | `python3 main.py --report` | Data Cleaning & Aggregation report terminal me print karo. |
 | `python3 main.py --export` | `stock_market_export.xlsx` banao (Power BI ke liye). |
+| `python3 main.py --web` | **Website** start karo (http://localhost:8000). Ctrl+C se band. |
 | `python3 main.py --reset-db` | `stock_market.db` delete karke **fresh sample data** ke saath naya banao. ⚠️ Aapke add kiye stocks/investors/trades chale jaayenge. |
 | `python3 main.py --help` | Saare flags ki list aur unka matlab dikhao. |
 
@@ -473,7 +478,7 @@ sqlite3 stock_market.db "SELECT * FROM stocks LIMIT 5;"
 
 ---
 
-## 6. Main Menu (0–16) ka matlab
+## 6. Main Menu (0–17) ka matlab
 
 | # | Option | Kya hota hai |
 |---|---|---|
@@ -493,7 +498,30 @@ sqlite3 stock_market.db "SELECT * FROM stocks LIMIT 5;"
 | 14 | Market Dashboard | **Unit 6 (Power BI concepts)**: Slicer (sector, investor type) → **Market Mood** (Bullish/Neutral/Bearish) + Gauge → Cards (invested, value, profit) → KPI (orders ▲▼, win rate vs 55%) → Top 5 Gainers/Losers → Drill-down (sector → stocks). Har number ke saath ek line ka matlab + dashboard image |
 | 15 | Share Delivery Tracker (Supply Chain case study) | Kharide hue shares demat account tak T+1 me pahunche ya nahi: region filter (investor kahan rehta hai) → delivery KPIs → routes (shehar → NSE) → broker report card → late hone ke reasons → takeaway + dashboard image |
 | 16 | Export for Power BI | `stock_market_export.xlsx` (6 sheets) |
+| 17 | Open the Website | MarketLens website browser me khulti hai: saare pages + 26 charts animation ke saath (Section 6A) |
 | 0 | Exit | Program band |
+
+### 6A. MarketLens Website (option 17)
+
+Terminal ke saath ab project ki ek **website** bhi hai. Chalane ke 3 tareeke (koi bhi ek):
+
+```bash
+python3 main.py --web
+```
+ya main menu me **17** dabao, ya seedha `python3 web_app.py`. Browser me **http://localhost:8000** khul jaata hai. Band karne ke liye terminal me **Ctrl+C** (menu se khola tha to menu wapas aa jaata hai).
+
+| Page | Terminal ka kaunsa option | Kya hai |
+|---|---|---|
+| Home | – | Market mood, 3D sector "ridge", index cards, top movers, sector returns |
+| Dashboard | 1, 9, 14 | Sector + investor-type slicers, KPI cards, gauge, gainers/losers, drill-down, watchlist |
+| Stocks | 4 | Search, candlestick / line chart, 20/50-DMA, volume, RSI, hover se OHLC, signal |
+| Charts Lab | 12, 13 | Saare **26 syllabus charts** browser me, unit tabs, bada spotlight view, replay animation |
+| Investors & Trade | 5, 6, 7, 8, 9, 10 | Directory, portfolio, har trade ka P&L, **asli Buy / Sell / Add investor**, stop-loss alerts |
+| Delivery | 15 | Animated T+1 chain, region slicer, route map, broker grades, delay reasons |
+
+**Andar kaise kaam karta hai:** `web_app.py` Python ka built-in server hai (kuch install nahi karna). `web_data.py` wahi `preprocessing.py` functions use karke data aur 26 charts ke SVG shapes banata hai → `/api/data`, `/api/charts` → `web/` ke pages JavaScript se charts draw aur animate karte hain. Website se Buy/Sell karo to `main.place_buy()` / `main.place_sell()` chalte hain, yaani terminal aur website ka data hamesha same rehta hai.
+
+> Website ko internet ki zaroorat sirf fonts ke liye hai; bina internet ke bhi chalti hai (system font dikhega).
 
 ---
 

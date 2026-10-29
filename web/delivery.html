@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Share Delivery Tracker · MarketLens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+.hero-night { background: var(--night); color: #FFFFFF; }
+.t1 { animation: travel 6s linear infinite; } .t2 { animation: travel 6s 2s linear infinite; } .t3 { animation: travel 6s 4s linear infinite; }
+.ring { animation: ring 2s ease-out infinite; }
+.flow { stroke-dasharray: 6 6; animation: dash 1.4s linear infinite; }
+</style>
+</head>
+<body>
+<div class="hero-night">
+  <section class="wrap night" style="padding-top:48px;padding-bottom:36px">
+    <div class="eyebrow">OPTION 15 · CASE STUDY · SUPPLY CHAIN &amp; LOGISTICS</div>
+    <h1 class="anim-up" style="font-size:clamp(36px,5vw,62px);letter-spacing:-.035em;line-height:1.02;margin-top:14px;font-weight:760">Every share is a parcel.<br><span style="color:#8A91B5">It must arrive by T+1.</span></h1>
+    <p style="color:#C3C8D8;font-size:16px;line-height:1.6;max-width:640px;margin:16px 0 0">When an investor buys, the shares travel through five hands to reach their demat account. Indian rules say: by the next trading day. Here is how well that chain performs.</p>
+    <div style="margin-top:34px;background:var(--night2);border:1px solid var(--night-line);border-radius:22px;padding:20px 18px 14px;overflow-x:auto">
+      <svg id="chain" viewBox="0 0 1000 150" style="width:100%;min-width:720px;display:block" role="img" aria-label="Delivery chain: investor, broker, NSE Mumbai, clearing corporation, depository, demat account"></svg>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:26px">
+      <span style="font-size:12px;font-weight:700;letter-spacing:.08em;color:#8A91B5;margin-right:6px">REGION SLICER</span>
+      <div id="regions" role="group" aria-label="Region" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
+  </section>
+</div>
+
+<main class="wrap" style="padding-top:24px;display:flex;flex-direction:column;gap:18px">
+  <div class="flexwrap" style="gap:14px">
+    <div class="card anim-up" style="flex:1 1 340px;padding:22px;display:flex;align-items:center;gap:20px">
+      <svg id="ring" viewBox="0 0 120 120" width="132" height="132" role="img" aria-label="On-time delivery rate" style="flex:none"></svg>
+      <div style="min-width:0"><div style="font-size:15px;font-weight:700">Delivered on T+1</div><div id="ot-note" style="font-size:13.5px;color:#4A5266;margin-top:6px;line-height:1.5"></div><div id="ot-verdict" style="font-size:13px;font-weight:700;margin-top:10px"></div></div>
+    </div>
+    <div id="kpis" style="flex:2 1 520px;display:grid;grid-template-columns:repeat(auto-fit,minmax(max(200px,calc(50% - 7px)),1fr));gap:14px"></div>
+  </div>
+
+  <div class="flexwrap">
+    <div class="card pad" style="flex:1.2 1 440px;min-width:0">
+      <div class="card-head"><span class="card-title">Route map · investor city → NSE Mumbai</span><span class="small">dot size = orders · colour = on-time %</span></div>
+      <svg id="map" viewBox="0 0 520 460" style="width:100%;margin-top:10px;display:block" role="img" aria-label="Order routes from investor cities to NSE Mumbai"></svg>
+    </div>
+    <div style="flex:1 1 380px;min-width:0;display:flex;flex-direction:column;gap:18px">
+      <div class="card pad">
+        <div class="card-head"><span class="card-title">Broker report card</span><span class="small">the “courier companies”</span></div>
+        <div id="brokers" style="display:flex;flex-direction:column;gap:12px;margin-top:16px"></div>
+        <div class="small" style="margin-top:14px">Grade A = 95%+ on time · B = 88–95% · C = below 88%</div>
+      </div>
+      <div class="card pad"><div class="card-title">Why were deliveries late?</div><div id="reasons" style="display:flex;flex-direction:column;gap:12px;margin-top:14px"></div></div>
+    </div>
+  </div>
+
+  <div class="flexwrap">
+    <div class="card pad" style="flex:1 1 420px;min-width:0">
+      <div class="card-head"><span class="card-title">On-time rate by month</span><span class="small">dashed = 95% target</span></div>
+      <svg id="monthly" viewBox="0 0 520 220" style="width:100%;margin-top:10px" role="img" aria-label="Monthly on-time delivery rate"></svg>
+    </div>
+    <div class="card" style="flex:1 1 420px;min-width:0">
+      <div class="card-title" style="padding:18px 20px">Routes</div>
+      <div class="tbl-box"><table class="tbl" style="min-width:460px"><thead><tr><th>FROM CITY</th><th>REGION</th><th class="r">KM TO NSE</th><th class="r">ORDERS</th><th class="r">ON TIME</th><th class="r">LATE</th></tr></thead><tbody id="routes"></tbody></table></div>
+    </div>
+  </div>
+
+  <div style="background:#0E1324;color:#FFF;border-radius:22px;padding:26px 28px;display:flex;flex-wrap:wrap;gap:20px 40px">
+    <div style="flex:1 1 220px"><div class="eyebrow" style="color:#A5A0FF">INVESTOR TAKEAWAY</div><div id="reg-name" style="font-family:var(--display);font-size:26px;font-weight:720;margin-top:8px;letter-spacing:-.02em"></div></div>
+    <div id="takeaways" style="flex:3 1 480px;display:flex;flex-direction:column;gap:10px"></div>
+  </div>
+</main>
+<script src="assets/app.js"></script>
+<script src="js/delivery.js"></script>
+</body>
+</html>

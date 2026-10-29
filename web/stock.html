@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stock Analysis · MarketLens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+.pick { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; width: 100%; text-align: left; border: 0; background: transparent; padding: 10px 12px; border-radius: 12px; cursor: pointer; color: inherit; min-height: 44px; }
+.pick:hover { background: #F2F3FA; }
+.pick.on { background: #0E1324; color: #FFFFFF; }
+.pick .nm { font-size: 11.5px; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#chart { touch-action: pan-y; cursor: crosshair; }
+</style>
+</head>
+<body>
+<main class="wrap" style="padding-top:24px;display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">
+  <aside class="card" style="flex:1 1 260px;max-width:100%;padding:14px">
+    <label for="q" class="lbl" style="font-weight:700;letter-spacing:.06em;padding:4px 4px 2px">SEARCH · SYMBOL, COMPANY OR SECTOR</label>
+    <div style="position:relative"><svg width="16" height="16" viewBox="0 0 16 16" style="position:absolute;left:12px;top:15px" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="#5B6478" stroke-width="1.6" fill="none"></circle><path d="M11 11l3.5 3.5" stroke="#5B6478" stroke-width="1.6" stroke-linecap="round"></path></svg>
+      <input id="q" class="field" type="search" placeholder="e.g. TCS, Bank, Pharma" autocomplete="off" style="padding-left:36px"></div>
+    <div class="small" id="match" style="padding:10px 4px 6px"></div>
+    <div id="list" style="display:flex;flex-direction:column;gap:2px;max-height:1100px;overflow-y:auto"></div>
+  </aside>
+
+  <section style="flex:999 1 640px;min-width:0;display:flex;flex-direction:column;gap:16px">
+    <div class="card anim-up" id="head" style="padding:22px 24px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:16px"><div class="skel" style="height:70px;width:100%"></div></div>
+    <div class="card" style="padding:18px 18px 10px">
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:center">
+        <div class="segs" role="group" aria-label="Time range" id="ranges"></div>
+        <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:#3B4255;align-items:center">
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#4F46E5;border-radius:2px"></span>20-DMA</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#EA580C;border-radius:2px"></span>50-DMA</span>
+          <div class="segs" role="group" aria-label="Chart type" id="types"></div>
+        </div>
+      </div>
+      <div class="mono" id="tip" style="display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12.5px;color:#3B4255;margin-top:12px;min-height:20px"></div>
+      <svg id="chart" viewBox="0 0 900 470" style="width:100%;display:block;margin-top:6px" role="img" aria-label="Candlestick chart with moving averages, volume and RSI"></svg>
+    </div>
+    <div class="grid cols-auto" style="--min:260px">
+      <div class="card anim-up" id="signal" style="padding:22px"></div>
+      <div class="card anim-up" id="returns" style="padding:22px"></div>
+      <div class="card anim-up" id="stats" style="padding:22px"></div>
+    </div>
+  </section>
+</main>
+<script src="assets/app.js"></script>
+<script src="js/stock.js"></script>
+</body>
+</html>

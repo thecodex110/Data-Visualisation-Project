@@ -245,34 +245,22 @@ def add_investor():
     finally:
         conn.close()
 
-def buy_stock():
-    print("\n" + "-"*40)
-    print("          BUY A STOCK")
-    print("-"*40)
+def place_buy(investor_id, stock_id, quantity):
+    """Records a buy at today's price with the auto 8% stop-loss and starts its T+1 share delivery.
+    Used by the terminal (Option 7) and the website. Raises ValueError with a readable message."""
+    if quantity <= 0:
+        raise ValueError("Quantity must be at least 1.")
+    conn = get_conn()
     try:
-        investor_id = int(input("Enter Investor ID: "))
-        stock_id = int(input("Enter Stock ID to buy: "))
-        quantity = int(input("Enter Quantity (number of shares): "))
-        if quantity <= 0:
-            print(" [!] Quantity must be at least 1.")
-            return
-
-        conn = get_conn()
         cursor = conn.cursor()
-
         cursor.execute("SELECT name, home_state, broker FROM investors WHERE investor_id = ?;", (investor_id,))
         i_row = cursor.fetchone()
         if not i_row:
-            print(" [!] Error: Investor ID not found.")
-            conn.close()
-            return
-
+            raise ValueError("Investor ID not found.")
         cursor.execute("SELECT symbol FROM stocks WHERE stock_id = ?;", (stock_id,))
         s_row = cursor.fetchone()
         if not s_row:
-            print(" [!] Error: Stock ID not found.")
-            conn.close()
-            return
+            raise ValueError("Stock ID not found.")
 
         price, _ = _latest_price(cursor, stock_id)
         stop_loss = round(price * (1 - db_setup.STOP_LOSS_PCT), 2)
@@ -286,24 +274,35 @@ def buy_stock():
         # Every buy starts a share delivery (supply chain case study): due in the demat account on T+1
         due = db_setup.create_delivery(conn, trade_id, i_row[2], i_row[1], buy_str)
         conn.commit()
+    finally:
         conn.close()
+    return {'trade_id': trade_id, 'investor': i_row[0], 'broker': i_row[2], 'symbol': s_row[0], 'quantity': quantity,
+            'price': price, 'invested': price * quantity, 'stop_loss': stop_loss, 'due': due}
 
-        print(f"\n [✓] Trade #{trade_id}: {i_row[0]} bought {quantity} x {s_row[0]} @ Rs {price:,.2f}.")
-        print(f"     Investment: Rs {price * quantity:,.2f} | Auto stop-loss: Rs {stop_loss:,.2f} "
+def buy_stock():
+    print("\n" + "-"*40)
+    print("          BUY A STOCK")
+    print("-"*40)
+    try:
+        investor_id = int(input("Enter Investor ID: "))
+        stock_id = int(input("Enter Stock ID to buy: "))
+        quantity = int(input("Enter Quantity (number of shares): "))
+        r = place_buy(investor_id, stock_id, quantity)
+        print(f"\n [✓] Trade #{r['trade_id']}: {r['investor']} bought {quantity} x {r['symbol']} @ Rs {r['price']:,.2f}.")
+        print(f"     Investment: Rs {r['invested']:,.2f} | Auto stop-loss: Rs {r['stop_loss']:,.2f} "
               f"({db_setup.STOP_LOSS_PCT * 100:.0f}% below buy price)")
-        print(f"     Delivery: shares reach the demat account via {i_row[2]} on {due} (T+1) - track it in Option 15.")
+        print(f"     Delivery: shares reach the demat account via {r['broker']} on {r['due']} (T+1) - track it in Option 15.")
+    except ValueError as e:
+        print(f" [!] Error: {e}")
     except Exception as e:
         print(f" [!] Error buying stock: {e}")
 
-def sell_stock():
-    print("\n" + "-"*40)
-    print("      SELL STOCK & CALCULATE PROFIT/LOSS")
-    print("-"*40)
+def place_sell(trade_id):
+    """Sells an open position at today's price and returns its profit/loss.
+    Used by the terminal (Option 8) and the website. Raises ValueError with a readable message."""
+    conn = get_conn()
     try:
-        trade_id = int(input("Enter Trade ID to sell: "))
-        conn = get_conn()
         cursor = conn.cursor()
-
         cursor.execute("""
             SELECT t.stock_id, s.symbol, t.buy_date, t.buy_price, t.quantity, t.sell_date, i.name
             FROM trades t
@@ -312,39 +311,44 @@ def sell_stock():
             WHERE t.trade_id = ?;
         """, (trade_id,))
         row = cursor.fetchone()
-
         if not row:
-            print(" [!] Error: Trade ID not found.")
-            conn.close()
-            return
-
+            raise ValueError("Trade ID not found.")
         stock_id, symbol, buy_str, buy_price, qty, sell_date, investor = row
         if sell_date is not None:
-            print(f" [i] Notice: This position was already sold on {sell_date}.")
-            conn.close()
-            return
+            raise ValueError(f"This position was already sold on {sell_date}.")
 
         sell_price, _ = _latest_price(cursor, stock_id)
         sell_str = datetime.now().strftime("%Y-%m-%d")
         held_days = max(1, (datetime.now().date() - datetime.strptime(buy_str, "%Y-%m-%d").date()).days)
-        pnl = (sell_price - buy_price) * qty
-        ret = (sell_price / buy_price - 1) * 100
-
         cursor.execute("""
             UPDATE trades
             SET sell_date = ?, sell_price = ?
             WHERE trade_id = ?;
         """, (sell_str, sell_price, trade_id))
         conn.commit()
+    finally:
         conn.close()
+    return {'trade_id': trade_id, 'symbol': symbol, 'investor': investor, 'quantity': qty, 'buy_price': buy_price,
+            'sell_price': sell_price, 'held_days': held_days, 'pnl': (sell_price - buy_price) * qty,
+            'return_pct': (sell_price / buy_price - 1) * 100}
 
-        print(f"\n [✓] Sold {qty} x {symbol} @ Rs {sell_price:,.2f} for {investor} (bought @ Rs {buy_price:,.2f}, held {held_days} days).")
-        if pnl > 0:
-            print(f" [✓] PROFIT BOOKED: Rs {pnl:,.2f}  ({ret:+.2f}%)")
-        elif pnl == 0:
+def sell_stock():
+    print("\n" + "-"*40)
+    print("      SELL STOCK & CALCULATE PROFIT/LOSS")
+    print("-"*40)
+    try:
+        trade_id = int(input("Enter Trade ID to sell: "))
+        r = place_sell(trade_id)
+        print(f"\n [✓] Sold {r['quantity']} x {r['symbol']} @ Rs {r['sell_price']:,.2f} for {r['investor']} "
+              f"(bought @ Rs {r['buy_price']:,.2f}, held {r['held_days']} days).")
+        if r['pnl'] > 0:
+            print(f" [✓] PROFIT BOOKED: Rs {r['pnl']:,.2f}  ({r['return_pct']:+.2f}%)")
+        elif r['pnl'] == 0:
             print(" [i] BREAK-EVEN: sold at the buy price, no profit and no loss.")
         else:
-            print(f" [!] LOSS BOOKED: Rs {pnl:,.2f}  ({ret:+.2f}%)")
+            print(f" [!] LOSS BOOKED: Rs {r['pnl']:,.2f}  ({r['return_pct']:+.2f}%)")
+    except ValueError as e:
+        print(f" [i] Notice: {e}")
     except Exception as e:
         print(f" [!] Error selling stock: {e}")
 
@@ -693,10 +697,11 @@ def main_menu():
         print(" 14. Market Dashboard (KPI Cards, Gauge, Slicers, Drill-down)")
         print(" 15. Supply Chain Case Study: Share Delivery Tracker (Region filter)")
         print(" 16. Export Dataset for Power BI (stock_market_export.xlsx)")
+        print(" 17. Open the Website (all pages + 26 charts in the browser)")
         print("  0. Exit")
         print("="*66)
 
-        choice = safe_input("Enter choice (0-16): ")
+        choice = safe_input("Enter choice (0-17): ")
         if choice is None:
             continue
 
@@ -706,7 +711,7 @@ def main_menu():
             '9': view_stop_loss_alerts, '10': investor_portfolio,
             '11': preprocessing.print_cleaning_report, '12': visualization_menu,
             '13': visualizations.generate_all_visualizations, '14': kpi_dashboard,
-            '15': supply_chain_case_study, '16': export_for_power_bi,
+            '15': supply_chain_case_study, '16': export_for_power_bi, '17': open_website,
         }
         if choice == '0':
             print("\n [✓] Thank you for using the Stock Market Analysis System. Goodbye!\n")
@@ -714,7 +719,12 @@ def main_menu():
         elif choice in actions:
             run_safely(actions[choice])
         else:
-            print(" [!] Invalid selection. Please enter a valid menu number (0-16).")
+            print(" [!] Invalid selection. Please enter a valid menu number (0-17).")
+
+def open_website():
+    """Starts the MarketLens website (web_app.py) and opens it in the browser. Ctrl+C returns to this menu."""
+    import web_app
+    web_app.run()
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Stock Market Analysis System - Data Visualization project (terminal).")
@@ -723,6 +733,7 @@ def parse_args():
     parser.add_argument('--chart', type=int, metavar='N', help="open/save chart number N and exit")
     parser.add_argument('--report', action='store_true', help="print the data cleaning & aggregation report and exit")
     parser.add_argument('--export', action='store_true', help="export stock_market_export.xlsx for Power BI and exit")
+    parser.add_argument('--web', action='store_true', help="start the website at http://localhost:8000 (Ctrl+C to stop)")
     parser.add_argument('--reset-db', action='store_true', help="delete and re-create stock_market.db with fresh sample data")
     return parser.parse_args()
 
@@ -741,5 +752,7 @@ if __name__ == "__main__":
         preprocessing.print_cleaning_report()
     elif args.export:
         export_for_power_bi()
+    elif args.web:
+        open_website()
     elif not args.reset_db:
         main_menu()

@@ -297,9 +297,10 @@ def get_state_geospatial_summary(db_path=DB_NAME):
     geo['traded_value_lakh'] = geo['traded_value'] / 1e5
     return geo
 
-def analyse_stock(stock_id, db_path=DB_NAME):
+def analyse_stock(stock_id, db_path=DB_NAME, prices=None):
     """Technical analysis of one stock: returns, volatility, moving averages, RSI and a buy/sell signal."""
-    prices = get_clean_prices(db_path)
+    if prices is None:
+        prices = get_clean_prices(db_path)
     g = prices[prices['stock_id'] == stock_id].reset_index(drop=True)
     if g.empty:
         return None, None
@@ -380,10 +381,11 @@ def print_cleaning_report(db_path=DB_NAME):
     print(stats_df.round(2).to_string())
     print("=" * 70 + "\n")
 
-def get_market_kpis(sector_name=None, risk_profile=None, db_path=DB_NAME):
-    """Power BI style headline measures, optionally sliced by sector and investor risk profile."""
-    trades = get_cleaned_trades(db_path)
-    stocks = get_stock_summary(db_path)
+def get_market_kpis(sector_name=None, risk_profile=None, db_path=DB_NAME, trades=None, stocks=None):
+    """Power BI style headline measures, optionally sliced by sector and investor risk profile.
+    trades / stocks can be passed in already loaded (the website builds all 35 slicer combinations at once)."""
+    trades = get_cleaned_trades(db_path) if trades is None else trades
+    stocks = get_stock_summary(db_path) if stocks is None else stocks
     if sector_name:
         trades = trades[trades['sector_name'] == sector_name]
         stocks = stocks[stocks['sector_name'] == sector_name]

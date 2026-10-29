@@ -1,0 +1,32 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "marquee",
+        "value": "*",
+        "files": [
+          "web/*.html"
+        ],
+        "createdAt": "2026-10-29T16:04:02.652Z",
+        "reason": "Claude decided: the stock ticker is domain-native motion for an NSE market site the user asked to be animated; it pauses on hover and stops under prefers-reduced-motion"
+      },
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-10-29T16:04:02.669Z",
+        "reason": "Claude decided: Inter/Inter Tight paired with JetBrains Mono tabular figures for a numbers-heavy finance UI; deliberate, consistent across all pages"
+      },
+      {
+        "rule": "hero-eyebrow-chip",
+        "value": "*",
+        "files": [
+          "web/*.html"
+        ],
+        "createdAt": "2026-10-29T16:04:02.685Z",
+        "reason": "Claude decided: eyebrows name the terminal menu option each page replaces (e.g. OPTION 15), a functional mapping for the course project, not decoration"
+      }
+    ]
+  }
+}

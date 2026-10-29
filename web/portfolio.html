@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Investors, Trade &amp; Alerts · MarketLens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+.inv { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; text-align: left; border: 0; background: transparent; padding: 8px 10px; border-radius: 12px; cursor: pointer; color: inherit; min-height: 52px; }
+.inv:hover { background: #F2F3FA; }
+.inv.on { background: var(--acc-soft); box-shadow: inset 0 0 0 1.5px var(--acc); }
+.inv .av { width: 36px; height: 36px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 750; font-size: 13px; }
+.inv .nm { display: block; font-weight: 650; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.line { display: flex; justify-content: space-between; gap: 10px; }
+.line span:first-child { color: #4A5266; }
+.ticket-box { background: #F7F8FC; border-radius: 14px; padding: 14px; margin-top: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; }
+.seg.wide { flex: 1; font-size: 14px; min-height: 40px; }
+details.add summary { cursor: pointer; font-weight: 650; font-size: 13.5px; color: var(--acc); min-height: 44px; display: flex; align-items: center; list-style: none; }
+details.add summary::-webkit-details-marker { display: none; }
+</style>
+</head>
+<body>
+<main class="wrap" style="padding-top:28px">
+  <div class="anim-up" style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:16px">
+    <div><div class="eyebrow">OPTIONS 5 · 6 · 7 · 8 · 9 · 10</div><h1 class="h-page">Investors, trades &amp; alerts</h1></div>
+    <div id="pills" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:22px;align-items:flex-start">
+    <aside class="card" style="flex:1 1 300px;max-width:100%;padding:16px">
+      <div class="card-head"><span class="card-title">Investor directory</span><span class="mono small" id="inv-count"></span></div>
+      <label for="iq" class="lbl" style="margin-top:12px">Search by name, state or broker</label>
+      <input id="iq" class="field" type="search" placeholder="e.g. Kerala, Zerodha" autocomplete="off">
+      <div id="risk-chips" role="group" aria-label="Risk profile" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"></div>
+      <div id="inv-list" style="display:flex;flex-direction:column;gap:2px;margin-top:12px;max-height:980px;overflow-y:auto"></div>
+      <details class="add" style="border-top:1px solid var(--line2);margin-top:12px;padding-top:4px">
+        <summary>+ Add new investor (option 6)</summary>
+        <form id="add-form" style="display:flex;flex-direction:column;gap:10px;padding:6px 0 4px">
+          <div><label class="lbl" for="a-name">Full name</label><input class="field" id="a-name" required maxlength="60"></div>
+          <div><label class="lbl" for="a-risk">Risk profile</label><select class="field" id="a-risk"></select></div>
+          <div><label class="lbl" for="a-state">Home state</label><select class="field" id="a-state"></select></div>
+          <div><label class="lbl" for="a-broker">Broker</label><select class="field" id="a-broker"></select></div>
+          <button class="btn dark" type="submit">Register investor</button>
+        </form>
+      </details>
+    </aside>
+
+    <section style="flex:999 1 600px;min-width:0;display:flex;flex-direction:column;gap:18px">
+      <div class="card anim-up" id="profile" style="padding:22px;display:flex;flex-wrap:wrap;gap:20px;align-items:center"><div class="skel" style="height:64px;width:100%"></div></div>
+
+      <div class="card pad">
+        <div class="card-head"><span class="card-title">P&amp;L of every trade</span><span class="small">green = profit · red = loss · outlined = still open</span></div>
+        <svg id="pnl" viewBox="0 0 800 170" style="width:100%;margin-top:12px" role="img" aria-label="Profit or loss per trade"></svg>
+      </div>
+
+      <div class="card">
+        <div style="padding:18px 20px" class="card-title">Portfolio &amp; trade history <span style="font-weight:500;color:#5B6478;font-size:13px">· option 10</span></div>
+        <div class="tbl-box"><table class="tbl" style="min-width:780px"><thead><tr><th>TRADE</th><th>STOCK</th><th class="r">QTY</th><th>BOUGHT</th><th class="r">BUY ₹</th><th class="r">EXIT / NOW ₹</th><th class="r">RETURN</th><th class="r">P&amp;L ₹</th><th>STATUS</th></tr></thead><tbody id="hist"></tbody></table></div>
+      </div>
+
+      <div class="flexwrap">
+        <div class="card" style="flex:1 1 360px;padding:20px">
+          <div class="card-title">Trade ticket <span style="font-weight:500;color:#5B6478;font-size:13px">· options 7 &amp; 8</span></div>
+          <div class="segs" role="group" aria-label="Buy or sell" style="display:flex;margin-top:14px">
+            <button type="button" class="seg wide on" id="m-buy" aria-pressed="true">Buy</button><button type="button" class="seg wide" id="m-sell" aria-pressed="false">Sell</button>
+          </div>
+          <form id="buy-form">
+            <div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:10px;margin-top:14px">
+              <div><label class="lbl" for="b-sym">Stock</label><select class="field" id="b-sym"></select></div>
+              <div><label class="lbl" for="b-qty">Quantity</label><input class="field mono" id="b-qty" type="number" min="1" max="100000" value="10" required></div>
+            </div>
+            <div class="ticket-box" id="buy-box"></div>
+            <button class="btn green" type="submit" id="buy-btn" style="width:100%;margin-top:14px">Buy</button>
+          </form>
+          <form id="sell-form" hidden>
+            <div style="margin-top:14px"><label class="lbl" for="s-id">Open position to sell</label><select class="field" id="s-id"></select></div>
+            <div class="ticket-box" id="sell-box"></div>
+            <button class="btn red" type="submit" id="sell-btn" style="width:100%;margin-top:14px">Sell</button>
+          </form>
+          <p class="small" style="margin:10px 0 0;font-size:12.5px">Orders are saved to stock_market.db at today's simulated price, exactly like the terminal menu.</p>
+        </div>
+
+        <div class="card" id="alerts" style="flex:1.4 1 420px;min-width:0;scroll-margin-top:80px">
+          <div style="padding:18px 20px"><div class="card-title" style="display:flex;align-items:center;gap:8px"><span class="alert-dot"></span>Stop-loss alerts <span style="font-weight:500;color:#5B6478;font-size:13px">· option 9</span></div><div class="small" id="alert-note" style="margin-top:3px"></div></div>
+          <div id="alert-list" style="display:flex;flex-direction:column;max-height:520px;overflow-y:auto"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+<script src="assets/app.js"></script>
+<script src="js/portfolio.js"></script>
+</body>
+</html>

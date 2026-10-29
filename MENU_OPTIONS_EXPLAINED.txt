@@ -1,5 +1,5 @@
 =====================================================================================
-  MAIN MENU KE SAARE OPTIONS (0 se 16) - KYA HOTA HAI + CODE KAHAN LIKHA HAI
+  MAIN MENU KE SAARE OPTIONS (0 se 17) - KYA HOTA HAI + CODE KAHAN LIKHA HAI
   Stock Market Analysis System (NSE, India) - Data Visualization Project
 =====================================================================================
 
@@ -569,6 +569,38 @@ CODE KAHAN HAI:
   main.py, line 397:  def export_for_power_bi()
   Shortcut command: python3 main.py --export
   Power BI steps: POWERBI_GUIDE.md
+
+
+=====================================================================================
+OPTION 17. Open the Website (all pages + 26 charts in the browser)
+=====================================================================================
+KYA KARTA HAI:
+  MarketLens website start karta hai aur browser me http://localhost:8000 kholta hai.
+  Website ke 6 pages: Home, Dashboard (option 1, 9, 14), Stocks (option 4),
+  Charts Lab (option 12, 13 - saare 26 charts), Investors & Trade (option 5-10),
+  Delivery (option 15). Charts browser me hi bante aur animate hote hain,
+  Python ki chart window nahi khulti. Website se buy / sell / naya investor
+  karo to wahi stock_market.db update hota hai jo terminal use karta hai.
+  Ctrl+C dabao to website band hoti hai aur main menu wapas aa jaata hai.
+
+KAISE KAAM KARTA HAI:
+  web_app.py Python ka built-in web server (http.server) chalata hai - kuch install
+  nahi karna. web_data.py preprocessing.py ke functions se saara data aur 26 charts
+  ke SVG shapes (rect, path, circle, text) banata hai; server ise /api/data aur
+  /api/charts par JSON me bhejta hai. web/ folder ke HTML + JavaScript ye JSON
+  padh ke pages aur animated charts banate hain. Buy / Sell ke liye website wahi
+  main.place_buy() aur main.place_sell() call karti hai jo option 7 aur 8 karte hain.
+
+CODE KAHAN HAI:
+  main.py:          def open_website()      (option 17) aur --web flag
+  web_app.py:       def run()               server start + browser open
+                    class Handler           /api/data, /api/charts, /api/buy,
+                                            /api/sell, /api/investors, /api/export
+  web_data.py:      def build_all()         app data + 26 chart specs
+  web/              index, dashboard, stock, charts, portfolio, delivery .html
+  web/assets/       style.css (design) aur app.js (common helpers + chart renderer)
+  web/js/           har page ki apni JavaScript file
+  Shortcut command: python3 main.py --web   (ya seedha python3 web_app.py)
 
 
 =====================================================================================

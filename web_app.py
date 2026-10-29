@@ -69,7 +69,8 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=WEB_DIR, **kwargs)
 
     def log_message(self, fmt, *args):
-        if "/api/" in (args[0] if args else ""):
+        # args[0] is the request line for normal logs but an HTTPStatus for error logs (e.g. a 404)
+        if "/api/" in str(args[0] if args else ""):
             sys.stderr.write(" [web] " + (fmt % args) + "\n")
 
     def _send(self, body, ctype="application/json", status=200, extra=None):

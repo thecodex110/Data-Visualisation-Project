@@ -1,6 +1,8 @@
 # MarketLens: Stock Market Analysis (NSE, India)
 ### Data Visualization Project
 
+Repository: https://github.com/thecodex110/Data-Visualisation-Project
+
 MarketLens is a web dashboard that analyses **36 NSE stocks** across six sectors (**IT, Banking, Pharma, Auto, FMCG, Energy**). It stores one year of daily prices, 90 investors, their buy/sell trades and the T+1 delivery of every bought share in a SQLite database, and presents everything through six interactive pages with **26 charts** covering the Data Visualization syllabus (Unit 1 to Unit 5, Power BI and the Supply Chain case study).
 
 > Prices are simulated sample data, not real market prices. Nothing here is investment advice.

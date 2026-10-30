@@ -90,7 +90,7 @@ function render() {
 
   const watch = d.stocks.filter((s) => !state.sector || s.sec === state.sector).sort((a, b) => a.sec.localeCompare(b.sec) || a.sym.localeCompare(b.sym));
   const upN = watch.filter((s) => s.d1 >= 0).length;
-  $('watch-note').textContent = 'Option 1 · ' + watch.length + ' stocks · ' + upN + ' up · ' + (watch.length - upN) + ' down today';
+  $('watch-note').textContent = watch.length + ' stocks · ' + upN + ' up · ' + (watch.length - upN) + ' down today';
   $('watch').innerHTML = watch.map((s) => { const sp = ML.spark(s.c.slice(-60), 110, 28);
     return '<tr><td><a href="stock.html?s=' + encodeURIComponent(s.sym) + '" style="font-weight:750;color:#0E1324">' + esc(s.sym) + '</a></td><td style="color:#3B4255">' + esc(s.name) + '</td>' +
       '<td><span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600"><span style="width:8px;height:8px;border-radius:3px;background:' + d.secColors[s.sec] + '"></span>' + s.sec + '</span></td>' +

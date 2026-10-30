@@ -123,7 +123,7 @@ def run(port=8000, open_browser=True):
     get_payload('data')
     print(f" [OK] MarketLens website running at {url}")
     print("     Pages: Home | Dashboard | Stocks | Charts Lab (26 charts) | Investors & Trade | Delivery")
-    print("     Press Ctrl+C to stop the website and go back.\n")
+    print("     Press Ctrl+C to stop the website.\n")
     if open_browser:
         webbrowser.open(url)
     try:

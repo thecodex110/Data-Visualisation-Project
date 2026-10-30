@@ -33,7 +33,7 @@ Power BI ecosystem consists of three main components:
 ## 2. Data Export & Loading Options
 
 ### Option A: Loading via Excel Export (Primary Connection)
-1. Run main menu option `16` in `main.py` (**"Export Dataset for Power BI"**) or `python3 main.py --export`.
+1. On the website home page click **"Download Excel for Power BI"** (or open http://localhost:8000/api/export).
 2. This generates `stock_market_export.xlsx` containing six separate worksheets:
    - `sectors`
    - `stocks`
@@ -188,7 +188,7 @@ To embed this dashboard directly into a brokerage or advisory web portal:
 
 ## 7. Case Study: Supply Chain & Logistics Dashboard (Self-study) - Share Delivery Tracker
 
-Use the `deliveries` sheet to rebuild the Python case-study dashboard (main menu option 15) in Power BI. In the stock market the "supply chain" is **share delivery**: after a buy order, shares travel Investor -> Broker -> NSE Mumbai -> Clearing Corporation -> Depository (CDSL/NSDL) -> the investor's **demat account**, and must arrive on **T+1** (next trading day). Each row of `deliveries` is one buy order = one "shipment"; the broker plays the role of the courier.
+Use the `deliveries` sheet to rebuild the website's Delivery page in Power BI. In the stock market the "supply chain" is **share delivery**: after a buy order, shares travel Investor -> Broker -> NSE Mumbai -> Clearing Corporation -> Depository (CDSL/NSDL) -> the investor's **demat account**, and must arrive on **T+1** (next trading day). Each row of `deliveries` is one buy order = one "shipment"; the broker plays the role of the courier.
 
 1. **Power Query** - add custom columns:
    ```powerquery

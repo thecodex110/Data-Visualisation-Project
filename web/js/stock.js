@@ -33,7 +33,7 @@ function renderStock() {
   const s = D.stocks.find((x) => x.sym === st.sel) || D.stocks[0];
   st.sel = s.sym;
   const N = s.c.length, ma20 = sma(s.c, 20), ma50 = sma(s.c, 50), rs = rsi(s.c);
-  $('head').innerHTML = '<div><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="eyebrow">OPTION 4 · SEARCH &amp; ANALYSE</span>' +
+  $('head').innerHTML = '<div><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="eyebrow">SEARCH &amp; ANALYSE</span>' +
     '<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:650;background:#F4F5F9;padding:4px 10px;border-radius:999px"><span style="width:8px;height:8px;border-radius:3px;background:' + D.secColors[s.sec] + '"></span>' + s.sec + ' · HQ ' + esc(s.hq) + '</span></div>' +
     '<h1 style="font-size:40px;margin-top:8px;font-weight:760">' + esc(s.sym) + ' <span style="font-weight:500;color:#5B6478;font-size:22px;letter-spacing:-.01em">' + esc(s.name) + '</span></h1></div>' +
     '<div style="text-align:right"><div class="mono" style="font-size:38px;font-weight:700;letter-spacing:-.03em">₹' + num(s.px) + '</div><div class="mono" style="font-size:15px;font-weight:700;color:' + col(s.d1) + '">' + pct(s.d1) + ' today · ' + pct(s.y1, 1) + ' 1Y</div></div>';

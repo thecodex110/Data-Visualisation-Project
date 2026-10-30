@@ -24,7 +24,7 @@ details.add summary::-webkit-details-marker { display: none; }
 <body>
 <main class="wrap" style="padding-top:28px">
   <div class="anim-up" style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:16px">
-    <div><div class="eyebrow">OPTIONS 5 · 6 · 7 · 8 · 9 · 10</div><h1 class="h-page">Investors, trades &amp; alerts</h1></div>
+    <div><div class="eyebrow">PORTFOLIO · TRADING · ALERTS</div><h1 class="h-page">Investors, trades &amp; alerts</h1></div>
     <div id="pills" style="display:flex;flex-wrap:wrap;gap:10px"></div>
   </div>
 
@@ -36,7 +36,7 @@ details.add summary::-webkit-details-marker { display: none; }
       <div id="risk-chips" role="group" aria-label="Risk profile" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"></div>
       <div id="inv-list" style="display:flex;flex-direction:column;gap:2px;margin-top:12px;max-height:980px;overflow-y:auto"></div>
       <details class="add" style="border-top:1px solid var(--line2);margin-top:12px;padding-top:4px">
-        <summary>+ Add new investor (option 6)</summary>
+        <summary>+ Add new investor</summary>
         <form id="add-form" style="display:flex;flex-direction:column;gap:10px;padding:6px 0 4px">
           <div><label class="lbl" for="a-name">Full name</label><input class="field" id="a-name" required maxlength="60"></div>
           <div><label class="lbl" for="a-risk">Risk profile</label><select class="field" id="a-risk"></select></div>
@@ -56,13 +56,13 @@ details.add summary::-webkit-details-marker { display: none; }
       </div>
 
       <div class="card">
-        <div style="padding:18px 20px" class="card-title">Portfolio &amp; trade history <span style="font-weight:500;color:#5B6478;font-size:13px">· option 10</span></div>
+        <div style="padding:18px 20px" class="card-title">Portfolio &amp; trade history</div>
         <div class="tbl-box"><table class="tbl" style="min-width:780px"><thead><tr><th>TRADE</th><th>STOCK</th><th class="r">QTY</th><th>BOUGHT</th><th class="r">BUY ₹</th><th class="r">EXIT / NOW ₹</th><th class="r">RETURN</th><th class="r">P&amp;L ₹</th><th>STATUS</th></tr></thead><tbody id="hist"></tbody></table></div>
       </div>
 
       <div class="flexwrap">
         <div class="card" style="flex:1 1 360px;padding:20px">
-          <div class="card-title">Trade ticket <span style="font-weight:500;color:#5B6478;font-size:13px">· options 7 &amp; 8</span></div>
+          <div class="card-title">Trade ticket</div>
           <div class="segs" role="group" aria-label="Buy or sell" style="display:flex;margin-top:14px">
             <button type="button" class="seg wide on" id="m-buy" aria-pressed="true">Buy</button><button type="button" class="seg wide" id="m-sell" aria-pressed="false">Sell</button>
           </div>
@@ -79,11 +79,11 @@ details.add summary::-webkit-details-marker { display: none; }
             <div class="ticket-box" id="sell-box"></div>
             <button class="btn red" type="submit" id="sell-btn" style="width:100%;margin-top:14px">Sell</button>
           </form>
-          <p class="small" style="margin:10px 0 0;font-size:12.5px">Orders are saved to stock_market.db at today's simulated price, exactly like the terminal menu.</p>
+          <p class="small" style="margin:10px 0 0;font-size:12.5px">Orders are saved to stock_market.db at today's simulated price.</p>
         </div>
 
         <div class="card" id="alerts" style="flex:1.4 1 420px;min-width:0;scroll-margin-top:80px">
-          <div style="padding:18px 20px"><div class="card-title" style="display:flex;align-items:center;gap:8px"><span class="alert-dot"></span>Stop-loss alerts <span style="font-weight:500;color:#5B6478;font-size:13px">· option 9</span></div><div class="small" id="alert-note" style="margin-top:3px"></div></div>
+          <div style="padding:18px 20px"><div class="card-title" style="display:flex;align-items:center;gap:8px"><span class="alert-dot"></span>Stop-loss alerts</div><div class="small" id="alert-note" style="margin-top:3px"></div></div>
           <div id="alert-list" style="display:flex;flex-direction:column;max-height:520px;overflow-y:auto"></div>
         </div>
       </div>

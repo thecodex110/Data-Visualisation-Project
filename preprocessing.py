@@ -316,49 +316,6 @@ def analyse_stock(stock_id, db_path=DB_NAME, prices=None):
     }
     return report, g
 
-def print_cleaning_report(db_path=DB_NAME):
-    sectors, investors, stocks, trades = load_raw_data(db_path)
-    conn = get_connection(db_path)
-    raw_prices = pd.read_sql_query("SELECT * FROM price_history;", conn)
-    conn.close()
-    print("\n" + "=" * 70)
-    print("          DATA CLEANING & AGGREGATION REPORT")
-    print("=" * 70)
-
-    print("\n[1] RAW TABLES (rows x columns)")
-    for name, t in [('sectors', sectors), ('investors', investors), ('stocks', stocks),
-                    ('price_history', raw_prices), ('trades', trades)]:
-        print(f"    {name:<14}: {t.shape[0]:>5} x {t.shape[1]}")
-
-    print("\n[2] MISSING VALUES IN RAW DATA")
-    print(f"    price_history.close: {raw_prices['close'].isnull().sum()} nulls  -> data-feed gaps (price not received)")
-    for col, n in trades.isnull().sum().items():
-        if n:
-            print(f"    trades.{col:<11}: {n} nulls  -> meaning: position not sold yet (open position)")
-    print(f"    duplicate trade rows: {trades.duplicated().sum()}")
-
-    clean = get_cleaned_trades(db_path)
-    prices = get_clean_prices(db_path)
-    print("\n[3] CLEANING STEPS APPLIED")
-    print("    - trade_date / buy_date / sell_date converted from text to datetime")
-    print(f"    - missing closing prices forward-filled per stock -> nulls left: {prices['close'].isnull().sum()}")
-    print("    - daily_return (%) = today's close / yesterday's close - 1")
-    print("    - null sell_date kept as OPEN position, valued at today's price")
-    print("    - holding_days = sell (or today) - buy, clipped at minimum 1")
-    print("    - pnl = (exit price - buy price) x quantity ; return_pct = exit / buy - 1")
-    print("    - status / simple_status labels derived from sold/open and profit/loss")
-    print(f"    cleaned trades shape: {clean.shape[0]} x {clean.shape[1]} (joined with stocks, investors, sectors)")
-
-    print("\n[4] AGGREGATION: trades by sector x status")
-    print(clean.pivot_table(index='sector_name', columns='simple_status', values='trade_id',
-                            aggfunc='count', fill_value=0).to_string())
-
-    print("\n[5] AGGREGATION: summary statistics of holding days, returns and daily returns")
-    stats_df = clean[['holding_days', 'return_pct', 'pnl']].describe()
-    stats_df['daily_return'] = prices['daily_return'].describe()
-    print(stats_df.round(2).to_string())
-    print("=" * 70 + "\n")
-
 def get_market_kpis(sector_name=None, risk_profile=None, db_path=DB_NAME, trades=None, stocks=None):
     trades = get_cleaned_trades(db_path) if trades is None else trades
     stocks = get_stock_summary(db_path) if stocks is None else stocks
@@ -459,11 +416,3 @@ def get_broker_scorecard(region=None, db_path=DB_NAME):
 
     score['grade'] = np.select([score['on_time_pct'] >= 95, score['on_time_pct'] >= 88], ['A', 'B'], default='C')
     return score.sort_values('on_time_pct', ascending=False)
-
-if __name__ == "__main__":
-    print("Testing Preprocessing Module...")
-    df = get_cleaned_trades()
-    print(f"Cleaned Trades shape: {df.shape}")
-    print(df[['trade_id', 'investor_name', 'symbol', 'holding_days', 'pnl', 'return_pct', 'status']].head())
-    print("\nSector Aggregate:")
-    print(get_sector_aggregates())

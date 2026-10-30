@@ -7,13 +7,13 @@ from datetime import datetime
 from faker import Faker
 
 DB_NAME = "stock_market.db"
-TRADING_DAYS = 250          # about one year of NSE trading sessions
-STOP_LOSS_PCT = 0.08        # stop-loss is placed 8% below the buy price
+TRADING_DAYS = 250
+STOP_LOSS_PCT = 0.08
 
 SECTORS = ["IT", "Banking", "Pharma", "Auto", "FMCG", "Energy"]
 RISK_PROFILES = {1: "Conservative", 2: "Moderate", 3: "Growth", 4: "Aggressive"}
 
-# Sector behaviour used by the price simulator: (annual drift, daily sector volatility, daily stock volatility)
+
 SECTOR_PROFILE = {
     "IT":      (0.08, 0.006, 0.012),
     "Banking": (0.14, 0.007, 0.011),
@@ -23,8 +23,7 @@ SECTOR_PROFILE = {
     "Energy":  (0.10, 0.007, 0.013),
 }
 
-# 36 NSE-listed companies (6 per sector): symbol, company, sector, HQ state, starting price (Rs)
-# Prices are SIMULATED sample data, not real market prices.
+
 STOCK_LIST = [
     ("TCS", "Tata Consultancy Services", "IT", "Maharashtra", 3850),
     ("INFY", "Infosys", "IT", "Karnataka", 1520),
@@ -64,11 +63,7 @@ STOCK_LIST = [
     ("IOC", "Indian Oil Corp", "Energy", "Delhi", 120),
 ]
 
-# ------------------------------------------------------------------------------
-# Case study: the stock market's own supply chain = SHARE DELIVERY (T+1 settlement)
-# Investor -> Broker -> NSE Mumbai -> Clearing Corporation -> Depository -> Demat account
-# ------------------------------------------------------------------------------
-# Investor home state -> (city, region, latitude, longitude): where each order starts from
+
 INVESTOR_CITIES = {
     "Delhi": ("New Delhi", "North", 28.6139, 77.2090),
     "Uttar Pradesh": ("Lucknow", "North", 26.8467, 80.9462),
@@ -83,9 +78,9 @@ INVESTOR_CITIES = {
 }
 EXCHANGE = ("NSE, Mumbai", 19.0662, 72.8657)
 BROKERS = ["Zerodha", "Groww", "Upstox", "Angel One", "ICICI Direct"]
-# Chance that a broker's order is NOT credited to the demat account on T+1
+
 BROKER_DELAY_RATE = {"Zerodha": 0.05, "Groww": 0.07, "Upstox": 0.09, "Angel One": 0.12, "ICICI Direct": 0.15}
-# Why a delivery can be late, with how many extra trading days it adds
+
 DELAY_REASONS = {
     "Funds paid late by investor": (1, 1),
     "Seller short delivery -> auction": (2, 3),
@@ -97,14 +92,14 @@ def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    # Enable foreign keys
+
     cursor.execute("PRAGMA foreign_keys = ON;")
 
-    # Drop existing tables to ensure clean seed
+
     for table in ["deliveries", "shipments", "trades", "price_history", "stocks", "investors", "sectors"]:
         cursor.execute(f"DROP TABLE IF EXISTS {table};")
 
-    # Create tables
+
     cursor.execute("""
     CREATE TABLE sectors (
         sector_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -182,15 +177,13 @@ def init_db():
     conn.close()
 
 def trading_dates(n=TRADING_DAYS):
-    """Last n weekday sessions ending today (or the last weekday)."""
     return [d.strftime("%Y-%m-%d") for d in pd.bdate_range(end=datetime.now().date(), periods=n)]
 
 def next_trading_day(date_str, days=1):
-    """Date `days` trading sessions (weekdays) after date_str - used for T+1 settlement."""
     return (pd.Timestamp(date_str) + pd.offsets.BDay(days)).strftime("%Y-%m-%d")
 
+# daily open / high / low / close / volume from the simulated returns
 def build_ohlcv(rng, returns, start_price, base_volume):
-    """Turns a series of daily returns into Open/High/Low/Close/Volume rows."""
     closes = start_price * np.cumprod(1 + returns)
     prev = np.concatenate([[start_price], closes[:-1]])
     opens = prev * (1 + rng.normal(0, 0.003, len(returns)))
@@ -200,7 +193,6 @@ def build_ohlcv(rng, returns, start_price, base_volume):
     return opens, highs, lows, closes, volumes
 
 def simulate_new_stock_history(conn, stock_id, sector_name, end_price, seed=None):
-    """Creates one year of simulated prices for a newly added stock, ending at the given price."""
     rng = np.random.default_rng(seed)
     mu, s_sec, s_stock = SECTOR_PROFILE.get(sector_name, (0.10, 0.006, 0.012))
     sigma = math.sqrt(0.008 ** 2 + s_sec ** 2 + s_stock ** 2)
@@ -215,7 +207,6 @@ def simulate_new_stock_history(conn, stock_id, sector_name, end_price, seed=None
     """, rows)
 
 def haversine_km(lat1, lon1, lat2, lon2):
-    """Great-circle distance between two lat/lon points in kilometres."""
     r = 6371.0
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp, dl = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
@@ -223,12 +214,10 @@ def haversine_km(lat1, lon1, lat2, lon2):
     return 2 * r * math.asin(math.sqrt(a))
 
 def order_route(home_state):
-    """Where an investor's order starts (city, region) and how far it is from NSE Mumbai."""
     city, region, lat, lon = INVESTOR_CITIES.get(home_state, (home_state, "Other", EXCHANGE[1], EXCHANGE[2]))
     return city, region, round(haversine_km(lat, lon, EXCHANGE[1], EXCHANGE[2]), 1)
 
 def create_delivery(conn, trade_id, broker, home_state, order_date):
-    """Delivery record for a NEW buy order: shares are expected in the demat account on T+1 (still pending)."""
     city, region, km = order_route(home_state)
     conn.execute("""
     INSERT INTO deliveries (trade_id, broker, from_city, region, distance_km, order_date, expected_date, delivery_date, delay_reason)
@@ -237,7 +226,6 @@ def create_delivery(conn, trade_id, broker, home_state, order_date):
     return next_trading_day(order_date)
 
 def seed_deliveries(conn):
-    """One share-delivery record per buy trade: T+1 on time, or late with a reason, or still pending."""
     rng = random.Random(7)
     cursor = conn.cursor()
     cursor.execute("""
@@ -255,7 +243,7 @@ def seed_deliveries(conn):
             reason = rng.choice(list(DELAY_REASONS))
             delivered = next_trading_day(expected, rng.randint(*DELAY_REASONS[reason]))
         if delivered > today:
-            delivered = None          # still inside the settlement cycle
+            delivered = None
         rows.append((trade_id, broker, city, region, km, buy_date, expected, delivered, reason))
     cursor.executemany("""
     INSERT INTO deliveries (trade_id, broker, from_city, region, distance_km, order_date, expected_date, delivery_date, delay_reason)
@@ -263,6 +251,7 @@ def seed_deliveries(conn):
     """, rows)
     conn.commit()
 
+# fill all tables with sample data
 def seed_db():
     fake = Faker('en_IN')
     Faker.seed(42)
@@ -272,20 +261,20 @@ def seed_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    # 1. Seed Sectors
+
     for sector in SECTORS:
         cursor.execute("INSERT INTO sectors (sector_name) VALUES (?);", (sector,))
     conn.commit()
     cursor.execute("SELECT sector_name, sector_id FROM sectors;")
     sector_map = dict(cursor.fetchall())
 
-    # 2. Seed Investors (90 investors from 10 states, risk profile 1-4, each with one broker account)
+
     indian_states = list(INVESTOR_CITIES)
     investors_data = [(fake.name(), random.choice([1, 2, 2, 3, 3, 4]), random.choice(indian_states),
                        random.choices(BROKERS, weights=[30, 25, 20, 15, 10])[0]) for _ in range(90)]
     cursor.executemany("INSERT INTO investors (name, risk_profile, home_state, broker) VALUES (?, ?, ?, ?);", investors_data)
 
-    # 3. Seed Stocks (36 companies, 6 per sector)
+
     cursor.executemany("""
     INSERT INTO stocks (symbol, company_name, sector_id, hq_state)
     VALUES (?, ?, ?, ?);
@@ -294,7 +283,7 @@ def seed_db():
     cursor.execute("SELECT stock_id, symbol FROM stocks;")
     stock_ids = {sym: sid for sid, sym in cursor.fetchall()}
 
-    # 4. Seed Price History: daily return = market move x beta + sector move + company move
+
     dates = trading_dates()
     n = len(dates)
     market = 0.0004 + 0.008 * rng.standard_t(4, n) / math.sqrt(2)
@@ -312,7 +301,7 @@ def seed_db():
         price_rows += [(sid, d, round(o, 2), round(h, 2), round(l, 2), round(c, 2), int(v))
                        for d, o, h, l, c, v in zip(dates, opens, highs, lows, closes, volumes)]
 
-    # Data-feed gaps: about 1% of closing prices are missing (cleaned later with forward fill)
+
     gap_rows = set(rng.choice(len(price_rows), size=len(price_rows) // 100, replace=False))
     price_rows = [r[:5] + (None,) + r[6:] if i in gap_rows and r[1] not in (dates[0], dates[-1]) else r
                   for i, r in enumerate(price_rows)]
@@ -322,8 +311,7 @@ def seed_db():
     """, price_rows)
     conn.commit()
 
-    # 5. Seed Trades (300 buy orders; most are sold later, some are still open positions)
-    # Conservative investors prefer defensive sectors and hold longer; aggressive ones trade cyclicals quickly
+
     preferred = {1: ["FMCG", "Banking", "Pharma"], 2: ["Banking", "IT", "FMCG"],
                  3: ["IT", "Auto", "Pharma"], 4: ["Auto", "Energy", "IT"]}
     hold_range = {1: (30, 200), 2: (20, 150), 3: (10, 100), 4: (2, 45)}
@@ -338,7 +326,7 @@ def seed_db():
         sid = random.choice(sector_stocks[sector])
         buy_i = random.randint(0, n - 2)
         buy_price = round(float(closes_by_stock[sid][buy_i]), 2)
-        # Trade sizes are log-normal: many small orders and a few very large ones (right-skewed)
+
         quantity = max(1, int(random.lognormvariate(math.log(50000), 0.9) * (0.6 + 0.4 * risk) / buy_price))
         stop_loss = round(buy_price * (1 - STOP_LOSS_PCT), 2)
 
@@ -355,7 +343,7 @@ def seed_db():
     """, trades_data)
     conn.commit()
 
-    # 6. Seed Share Deliveries (Supply Chain case study: one T+1 delivery per buy order)
+
     seed_deliveries(conn)
     conn.close()
 

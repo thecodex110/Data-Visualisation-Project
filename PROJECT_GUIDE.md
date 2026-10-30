@@ -1,12 +1,12 @@
-# 📘 Project Guide (Hinglish) — Stock Market Analysis System
+# Project Guide (Hinglish) — Stock Market Analysis System
 ### Data Visualization Course Project · Terminal (CLI) + MarketLens Website
 
 Is ek file me sab kuch hai: project me **kya hai**, **kaise chalta hai**, **har terminal command ka matlab**, **har menu option ka matlab**, aur **syllabus ka har topic project me kahan hai**.
 
 ---
 
-## 📑 Table of Contents
-0. [⚡ Sabse pehle: Terminal me project kaise ON karein](#0--sabse-pehle-terminal-me-project-kaise-on-karein)
+## Table of Contents
+0. [Sabse pehle: Terminal me project kaise ON karein](#0-sabse-pehle-terminal-me-project-kaise-on-karein)
 1. [Project kya hai?](#1-project-kya-hai)
    - [1A. Purana Library project → naya Stock Market project (kya badla)](#1a-purana-library-project--naya-stock-market-project-kya-badla)
 2. [Project me kya-kya hai (files & folders)](#2-project-me-kya-kya-hai-files--folders)
@@ -26,7 +26,7 @@ Is ek file me sab kuch hai: project me **kya hai**, **kaise chalta hai**, **har 
 
 ---
 
-## 0. ⚡ Sabse pehle: Terminal me project kaise ON karein
+## 0. Sabse pehle: Terminal me project kaise ON karein
 
 > Mac ke liye steps. Har command terminal me paste karo aur **Enter** dabao. (Windows ke commands Section 5 me hain.)
 
@@ -46,7 +46,7 @@ rm -rf venv
 ```
 `rm -rf` = folder aur uske andar sab delete. Sirf `venv` folder hatega, project code nahi.
 
-> ⚠️ **Important (is Mac pe):** venv ko project folder ke **andar** banane par macOS ki security policy kuch library files (`.so`) block/kharab kar deti hai → error aata hai *"library load disallowed by system policy"* ya *"No module named 'pandas'"*. Isliye venv project ke **bahar** `~/.venvs/dv-lms` me banate hain. (`~` = aapka home folder `/Users/rahil`. Naam `dv-lms` purane project se chala aa raha hai, bas ek folder ka naam hai.)
+> **Important (is Mac pe):** venv ko project folder ke **andar** banane par macOS ki security policy kuch library files (`.so`) block/kharab kar deti hai → error aata hai *"library load disallowed by system policy"* ya *"No module named 'pandas'"*. Isliye venv project ke **bahar** `~/.venvs/dv-lms` me banate hain. (`~` = aapka home folder `/Users/rahil`. Naam `dv-lms` purane project se chala aa raha hai, bas ek folder ka naam hai.)
 
 **Step 4 — Naya virtual environment banao** (agar pehle se bana hai to ye step skip karo)
 ```bash
@@ -110,7 +110,7 @@ deactivate
 ```
 Kaam khatam — venv band.
 
-> 💡 **Program kabhi apne-aap band nahi hota.** Har chart Mac ke **Preview** app me khulta hai aur menu turant wapas aa jaata hai. Preview band karo, `Cmd+Q` karo, galti se `Ctrl+C` dabao, ya koi error aaye — menu chalta rehta hai. Program sirf menu me **`0`** dabane pe band hota hai. Teacher ke saamne demo me baar-baar restart nahi karna padega.
+> **Program kabhi apne-aap band nahi hota.** Har chart Mac ke **Preview** app me khulta hai aur menu turant wapas aa jaata hai. Preview band karo, `Cmd+Q` karo, galti se `Ctrl+C` dabao, ya koi error aaye — menu chalta rehta hai. Program sirf menu me **`0`** dabane pe band hota hai. Teacher ke saamne demo me baar-baar restart nahi karna padega.
 
 ---
 
@@ -136,7 +136,7 @@ Plus:
 | Trades | 300 buy orders (zyada tar baad me sell hue, kuch abhi bhi open) |
 | Share deliveries (case study) | 300 (har buy order ke shares investor ke demat account tak T+1 me pahunche ya late hue) |
 
-> ⚠️ Prices **asli market prices nahi hain** — `db_setup.py` ek realistic random walk se banata hai (market ki chaal + sector ki chaal + company ki apni chaal). Isliye ye project **investment advice nahi** hai, sirf data visualization ka demo hai.
+> Prices **asli market prices nahi hain** — `db_setup.py` ek realistic random walk se banata hai (market ki chaal + sector ki chaal + company ki apni chaal). Isliye ye project **investment advice nahi** hai, sirf data visualization ka demo hai.
 
 **Tools used (sab Python libraries):**
 | Library | Kis kaam ke liye |
@@ -180,22 +180,22 @@ Plus:
 
 ```
 Data-Visualisation-Project-/
-├── main.py                  # 🎮 Program yahin se start hota hai: menu, buy/sell, analysis, market dashboard, delivery tracker, flags
-├── db_setup.py              # 🗄️ Database banata hai: 6 tables + simulated prices, investors, trades, deliveries
-├── preprocessing.py         # ⚙️ Data cleaning + analysis: missing prices, returns, P&L, RSI, KPIs, deliveries
-├── visualizations.py        # 🎨 Saare 26 charts (unit-wise) + CHART_MENU list + candlestick analysis chart
-├── web_app.py               # 🌐 Website server (option 17 / --web): pages + data API + buy/sell
-├── web_data.py              # 🌐 Website ka data + 26 charts ke SVG shapes banata hai
-├── web/                     # 🌐 Website ke pages (HTML), style.css, app.js, har page ki JS
-├── stock_market.db          # 💾 SQLite database file (asli data yahan store hota hai)
-├── stock_market_export.xlsx # 📊 Power BI ke liye Excel (6 sheets)
-├── requirements.txt         # 📦 Kaunsi Python libraries install karni hain
-├── POWERBI_GUIDE.md         # 📑 Power BI Desktop me dashboard banane ka step-by-step guide (Unit 6)
-├── PROJECT_GUIDE.md         # 📘 Ye file
+├── main.py                  # Program yahin se start hota hai: menu, buy/sell, analysis, market dashboard, delivery tracker, flags
+├── db_setup.py              # Database banata hai: 6 tables + simulated prices, investors, trades, deliveries
+├── preprocessing.py         # Data cleaning + analysis: missing prices, returns, P&L, RSI, KPIs, deliveries
+├── visualizations.py        # Saare 26 charts (unit-wise) + CHART_MENU list + candlestick analysis chart
+├── web_app.py               # Website server (option 17 / --web): pages + data API + buy/sell
+├── web_data.py              # Website ka data + 26 charts ke SVG shapes banata hai
+├── web/                     # Website ke pages (HTML), style.css, app.js, har page ki JS
+├── stock_market.db          # SQLite database file (asli data yahan store hota hai)
+├── stock_market_export.xlsx # Power BI ke liye Excel (6 sheets)
+├── requirements.txt         # Kaunsi Python libraries install karni hain
+├── POWERBI_GUIDE.md         # Power BI Desktop me dashboard banane ka step-by-step guide (Unit 6)
+├── PROJECT_GUIDE.md         # Ye file
 ├── MENU_OPTIONS_EXPLAINED.txt # Main menu ke 0–17 options + code kis file/function/line me
 ├── README.md                # Short intro
 ├── .gitignore               # Git ko batata hai venv/ aur __pycache__/ ignore karo
-└── charts/                  # 🖼️ Saare generated PNG charts yahan save hote hain
+└── charts/                  # Saare generated PNG charts yahan save hote hain
 ```
 
 ### Har file ka kaam (detail me)
@@ -440,7 +440,7 @@ python3 main.py
 | `python3 main.py --report` | Data Cleaning & Aggregation report terminal me print karo. |
 | `python3 main.py --export` | `stock_market_export.xlsx` banao (Power BI ke liye). |
 | `python3 main.py --web` | **Website** start karo (http://localhost:8000). Ctrl+C se band. |
-| `python3 main.py --reset-db` | `stock_market.db` delete karke **fresh sample data** ke saath naya banao. ⚠️ Aapke add kiye stocks/investors/trades chale jaayenge. |
+| `python3 main.py --reset-db` | `stock_market.db` delete karke **fresh sample data** ke saath naya banao.  Aapke add kiye stocks/investors/trades chale jaayenge. |
 | `python3 main.py --help` | Saare flags ki list aur unka matlab dikhao. |
 
 ### 5.4 Files ko alag se chalana (optional)
@@ -706,7 +706,7 @@ Investor ──► Broker ──► NSE Mumbai ──► Clearing Corp ──►
 
 India me rule hai **T+1**: order ke **agle trading din** shares demat account me aa jaane chahiye. Usse late = **late delivery**.
 
-**Parcel ↔ Stock market (teacher ko aise samjhao):**
+**Parcel → Stock market (teacher ko aise samjhao):**
 | Logistics shabd | Is project me |
 |---|---|
 | Shipment | Ek buy order (`deliveries` table ki ek row) |
@@ -832,6 +832,6 @@ Business users ke liye dashboard. Project Excel export deta hai, aur guide me Po
 | Chart khul nahi raha | `--all` mode charts nahi kholta (by design). Menu 12 ya `--chart N` se kholo, ya `open charts` |
 | Chart ke baad program band ho gaya (purana version) | Naye version me ye fix hai: charts Preview me khulte hain aur menu kabhi band nahi hota. Program dobara start karo: `python3 main.py` |
 | Galti se `Ctrl+C` dab gaya | Kuch nahi hoga — "cancelled" message aayega aur menu chalta rahega. Band karna ho to `0` |
-| Data ajeeb lag raha / kharab ho gaya | `python3 main.py --reset-db` (⚠️ apna added data jayega) |
+| Data ajeeb lag raha / kharab ho gaya | `python3 main.py --reset-db` ( apna added data jayega) |
 | Excel export error | `openpyxl` install hai check karo; Excel me file khuli ho to band karo |
 | "Symbol already exists" | Wo symbol pehle se watchlist me hai — option 1 me dekho |

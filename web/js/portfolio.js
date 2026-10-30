@@ -1,4 +1,3 @@
-/* Investors & Trade (Options 5-10): directory, portfolio, P&L per trade, real buy / sell / add investor, stop-loss alerts. */
 ML.topbar('portfolio.html');
 ML.footer();
 
@@ -100,7 +99,6 @@ function setMode(m) {
   $('buy-form').hidden = m !== 'buy'; $('sell-form').hidden = m !== 'sell';
 }
 
-/* send an order to the server, then reload the data so every number updates */
 function submit(url, body, ok) {
   if (st.busy) return; st.busy = true;
   document.querySelectorAll('form button[type=submit]').forEach((b) => { b.disabled = true; });

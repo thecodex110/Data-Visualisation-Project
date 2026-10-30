@@ -1,7 +1,3 @@
-"""Builds everything the website shows, straight from stock_market.db:
-  - app data (watchlist, OHLC, KPIs per slicer, investors, trades, deliveries) for the pages
-  - the 26 syllabus charts as SVG shape lists (rects, paths, circles, texts) the browser animates
-The chart maths matches visualizations.py; only the drawing moves from matplotlib to the browser."""
 import math
 import numpy as np
 import pandas as pd
@@ -21,7 +17,6 @@ def r1(v): return round(float(v), 1)
 def r2(v): return round(float(v), 2)
 
 
-# ================================================================ CHART SPEC ENGINE
 W, H = 480, 300
 class Chart:
     def __init__(s, cid, unit, title, desc, insight):
@@ -40,7 +35,6 @@ class Chart:
     def out(s): return s.d
 
 class Panel:
-    """Maps data space to a rectangle of the chart."""
     def __init__(s, ch, x, y, w, h, xr, yr, title=None):
         s.ch, s.x, s.y, s.w, s.h, s.xr, s.yr = ch, x, y, w, h, xr, yr
         if title: ch.text(x, y - 8, title, 10.5, INK, wt=650)
@@ -67,7 +61,6 @@ def kde(vals, grid):
     return k(grid)
 
 def arc(cx, cy, r0, r1_, a0, a1):
-    """Donut slice path, angles in radians from 12 o'clock clockwise."""
     def pt(r, a): return cx + r * math.sin(a), cy - r * math.cos(a)
     large = 1 if a1 - a0 > math.pi else 0
     x0, y0 = pt(r1_, a0); x1, y1 = pt(r1_, a1); x2, y2 = pt(r0, a1); x3, y3 = pt(r0, a0)
@@ -90,9 +83,9 @@ def seq(t, c=ACC):
     return mix("#EEF0FF", c, max(0, min(1, t)))
 
 
+# returns (charts, data) for the website
 def build_all():
-    """Returns (charts, data). Takes a few seconds: the web server caches the result."""
-    # ---------------------------------------------------------------- data
+
     prices = p.get_clean_prices()
     summary = p.get_stock_summary()
     hq = pd.read_sql_query("SELECT stock_id, hq_state FROM stocks", p.get_connection())
@@ -111,7 +104,7 @@ def build_all():
     charts = []
     sec_ret = summary.groupby("sector_name")["return_1y"].mean().reindex(SEC)
 
-    # ---------- 1 Design principles
+
     c = Chart(1, "Unit 1", "Design Principles: Poor 3D Chart vs Clean Bar Chart",
               "The same sector returns drawn twice: a cluttered fake-3D rainbow chart, then a clean sorted chart.",
               "Sorting, one colour and direct labels make the best sector readable in a second.")
@@ -133,7 +126,7 @@ def build_all():
     c.rect(pb.X(0), 50, 1.2, 210, "#9AA1B2")
     charts.append(c.out())
 
-    # ---------- 2 Data graphic types
+
     c = Chart(2, "Unit 1", "Categorical, Time Series & Statistical Data Graphics",
               "Three kinds of data, three right chart types: bars for categories, a line for time, a histogram for spread.",
               "Pick the chart from the data type: category, time or distribution.")
@@ -155,7 +148,7 @@ def build_all():
     c.text(340, 266, "1Y return of 36 stocks", 7.5)
     charts.append(c.out())
 
-    # ---------- 3 Pairplot
+
     c = Chart(3, "Unit 2", "Pairplot Matrix of Stock Risk & Return",
               "Every pair of 1-year return, volatility and max drawdown, one dot per stock, coloured by sector.",
               "Higher volatility comes with deeper drawdowns: risk shows up in both columns.")
@@ -179,7 +172,7 @@ def build_all():
             if i == 2: c.text(x0 + cw / 2, y0 + chh + 12, lx, 8, INK, "middle", 600)
     charts.append(c.out())
 
-    # ---------- 4 Heatmap
+
     c = Chart(4, "Unit 2", "Heatmap: Monthly Return by Sector",
               "Average monthly return of each sector. Green = the sector gained that month, red = it fell.",
               "Colour turns a 6 x 12 table into a pattern you can scan in seconds.")
@@ -196,7 +189,7 @@ def build_all():
         c.text(72 + j * cw + (cw - 3) / 2, 34, pd.Period(mo).strftime("%b"), 8, MUT, "middle")
     charts.append(c.out())
 
-    # ---------- 5 Interactive explorer (sector indices)
+
     c = Chart(5, "Unit 2", "Interactive Explorer: Sector Indices with Moving Average",
               "Six sector indices (base 100). On the website, hover any line and switch sectors on the Stock page.",
               "Interaction lets the reader ask their own question instead of reading a fixed one.")
@@ -214,7 +207,7 @@ def build_all():
         c.text(416, y, "%s %.0f" % (s_, v), 8.5, SC[s_], wt=650)
     charts.append(c.out())
 
-    # ---------- 6 Graphical perception
+
     c = Chart(6, "Unit 2", "Graphical Perception: Position vs Length vs Angle vs Area vs Colour",
               "The same six sector traded values encoded five ways. Compare how easily you can rank them.",
               "Position and length are read most accurately; angle, area and colour are hardest.")
@@ -236,7 +229,7 @@ def build_all():
         c.path(arc(14 + 2 * colw + 40, 160, 0, 38, a0, a1), "#FFFFFF", mix("#C7CBFF", ACC, i / 5), 1.2, a="f", dl=i); a0 = a1
     charts.append(c.out())
 
-    # ---------- 7 Grammar of graphics
+
     c = Chart(7, "Unit 2", "Grammar of Graphics: Layers, Aesthetics, Geometries & Scales",
               "A chart built layer by layer: data -> points -> line geometry -> smoothing stat -> colour aesthetic.",
               "Every chart is data + aesthetic mapping + geometry + statistics + scales.")
@@ -255,7 +248,7 @@ def build_all():
             c.circ(pn.X(i), pn.Y(v), 3, col, a="pop", dl=k * 3 + i // 4)
     charts.append(c.out())
 
-    # ---------- 8 Sector bar
+
     c = Chart(8, "Unit 3", "Bar Plot: Average 1-Year Return by Sector",
               "Mean 1-year return of the six stocks in each sector, sorted from best to worst.",
               "%s led the year at %+.1f%%; %s trailed at %+.1f%%." % (sec_ret.idxmax(), sec_ret.max(), sec_ret.idxmin(), sec_ret.min()))
@@ -269,7 +262,7 @@ def build_all():
         c.text(x + pn.w / 6 * 0.32, 278, s_, 9, INK, "middle", 600)
     charts.append(c.out())
 
-    # ---------- 9 Most traded
+
     c = Chart(9, "Unit 3", "Horizontal Bar Plot: Top 10 Most Traded Stocks",
               "Number of buy orders per stock. Horizontal bars leave room for long stock names.",
               "Horizontal bars are the right layout when category labels are long.")
@@ -282,7 +275,7 @@ def build_all():
         c.text(pn.X(rw["total_trades"]) + 5, y + 13, "%d" % rw["total_trades"], 9, INK, wt=700)
     charts.append(c.out())
 
-    # ---------- 10 Cleveland dot
+
     c = Chart(10, "Unit 3", "Cleveland Dot Plot: 1-Year Return of Every Stock",
               "All 36 stocks sorted by 1-year return. A dot per stock is cleaner than 36 bars.",
               "Dots keep the focus on position, so ranks and gaps stand out.")
@@ -301,7 +294,7 @@ def build_all():
             c.text(x0 + 154, y + 3, "%+.0f" % rw["return_1y"], 7, MUT)
     charts.append(c.out())
 
-    # ---------- 11 Grouped & stacked
+
     c = Chart(11, "Unit 3", "Grouped & Stacked Bars: Trade Outcome by Sector",
               "Left: profit, loss and open trades side by side. Right: the same counts stacked to 100%.",
               "Grouped bars compare counts; stacked 100% bars compare shares.")
@@ -326,7 +319,7 @@ def build_all():
         c.circ(40 + k * 100, 18, 4, STATUS_C[st_]); c.text(48 + k * 100, 21, st_, 8.5, INK)
     charts.append(c.out())
 
-    # ---------- 12 Distributions
+
     c = Chart(12, "Unit 3", "Distributions: Histogram + KDE, Violin (Daily Returns)",
               "Left: every daily stock return as a histogram with a smooth density curve. Right: one violin per sector.",
               "Most days move less than 2%; Auto and Energy have the widest violins = most volatile.")
@@ -350,7 +343,7 @@ def build_all():
         c.text(cx, 275, s_[:4], 7.5, MUT, "middle")
     charts.append(c.out())
 
-    # ---------- 13 ECDF QQ skew log
+
     c = Chart(13, "Unit 3", "ECDF, Q-Q Plot, Skewed Data & Log Transform",
               "ECDF and Q-Q of daily returns (fat tails vs normal), and how a log scale fixes skewed trade sizes.",
               "Real returns have fatter tails than a normal curve; log transform makes skewed money data readable.")
@@ -372,7 +365,7 @@ def build_all():
     for i, h_ in enumerate(hist): c.rect(pd_.X(b[i]) + 0.5, pd_.Y(h_), pd_.X(b[i + 1]) - pd_.X(b[i]) - 1, pd_.Y(0) - pd_.Y(h_), UP, 1, a="g", dl=i)
     charts.append(c.out())
 
-    # ---------- 14 Box/strip vs ridgeline
+
     c = Chart(14, "Unit 4", "Many Distributions: Vertical (Box/Strip) vs Horizontal (Ridgeline)",
               "Monthly stock returns per sector two ways: boxplots with every point, and stacked density ridges.",
               "Boxplots summarise; ridgelines show the full shape of each distribution.")
@@ -395,7 +388,7 @@ def build_all():
         c.text(296, pb.Y(i) - 2, s_, 8, INK, "end", 600)
     charts.append(c.out())
 
-    # ---------- 15 Proportions
+
     c = Chart(15, "Unit 4", "Proportions: Pie, Side-by-Side Bars, Stacked Bar",
               "Share of all 300 trades that booked profit, booked loss or are still open, three ways.",
               "Pies show part-of-whole; bars make close shares easier to compare.")
@@ -420,7 +413,7 @@ def build_all():
         c.text(424, 50 + (acc + f / 2) * 200 + 3, st_, 8.5, INK); acc += f
     charts.append(c.out())
 
-    # ---------- 16 Parts of total
+
     c = Chart(16, "Unit 4", "Proportions Separately as Parts of the Total",
               "Each sector's traded value drawn against the full market total (grey), one small panel each.",
               "Small multiples show each part against the whole without a busy legend.")
@@ -434,7 +427,7 @@ def build_all():
         c.text(x0, y0 + 106, "Rs %.1f L of Rs %.1f L" % (tv[s_], tot), 7.5, MUT)
     charts.append(c.out())
 
-    # ---------- 17 Treemap & nested donut
+
     c = Chart(17, "Unit 4", "Nested Proportions: Treemap & Nested Donut",
               "Traded value split by sector, then by stock inside each sector.",
               "Treemaps and nested donuts show a part-of-a-part in one picture.")
@@ -460,7 +453,7 @@ def build_all():
     c.text(cx, cy + 4, "Sector", 8, MUT, "middle"); c.text(cx, 270, "inner = sector, outer = stock", 8, MUT, "middle")
     charts.append(c.out())
 
-    # ---------- 18 Associations
+
     c = Chart(18, "Unit 4", "Associations: Scatter, Correlogram, PCA",
               "Risk vs return per stock, how sectors move together, and all 36 stocks squeezed into two PCA axes.",
               "Stocks from the same sector cluster together in the PCA view: they share a common driver.")
@@ -478,14 +471,14 @@ def build_all():
             if i != j: c.text(200 + j * cs_ + 9, 50 + i * cs_ + 12, "%.1f" % v, 6, INK if v < 0.6 else "#FFFFFF", "middle")
     c.text(200, 40, "Correlogram", 10.5, INK, wt=650)
     mat, secmap = p.get_stock_return_matrix()
-    pcs = PCA(2).fit((mat - mat.mean()) / mat.std()).components_   # loadings: one point per stock
+    pcs = PCA(2).fit((mat - mat.mean()) / mat.std()).components_
     pc = Panel(c, 345, 40, 120, 210, nice(pcs[0].min(), pcs[0].max()), nice(pcs[1].min(), pcs[1].max()), "PCA of stocks")
     pc.grid(3, labels=False)
     for k, sym in enumerate(mat.columns): c.circ(pc.X(pcs[0][k]), pc.Y(pcs[1][k]), 3.4, SC[secmap[sym]], 0.9, "pop", k // 3)
     c.text(405, 268, "PC1 ->", 7.5, MUT, "middle")
     charts.append(c.out())
 
-    # ---------- 19 Slope chart
+
     c = Chart(19, "Unit 4", "Paired Data: Slope Chart of Sector Returns",
               "Each sector's return in the first half of the year vs the second half.",
               "Crossing lines show sectors that swapped places between the two halves.")
@@ -500,13 +493,13 @@ def build_all():
         c.circ(130, pn.Y(h1[s_]), 4, SC[s_], a="pop", dl=i); c.circ(350, pn.Y(h2[s_]), 4, SC[s_], a="pop", dl=i + 6)
     for side, vals, x, an in ((0, h1, 122, "end"), (1, h2, 358, "start")):
         last = -999
-        for s_ in vals.sort_values(ascending=False).index:      # top to bottom, at least 11 px apart
+        for s_ in vals.sort_values(ascending=False).index:
             y = max(pn.Y(vals[s_]) + 3, last + 11); last = y
             txt = "%s %+.0f%%" % (s_, vals[s_]) if side == 0 else "%+.0f%% %s" % (vals[s_], s_)
             c.text(x, y, txt, 8, SC[s_], an, 650)
     charts.append(c.out())
 
-    # ---------- 20 Time series
+
     c = Chart(20, "Unit 5", "Time Series: Moving Averages, LOESS Smoothing & Trend",
               "The equal-weight market index with 20 and 50-day moving averages and a LOESS smooth.",
               "Smoothing hides daily noise so the real trend shows.")
@@ -523,7 +516,7 @@ def build_all():
     for i in range(0, len(lv), 42): c.text(pn.X(i), 280, mindex["date"].iloc[i].strftime("%b"), 8, MUT, "middle")
     charts.append(c.out())
 
-    # ---------- 21 Advanced time series
+
     c = Chart(21, "Unit 5", "Dose-Response, Multi-Response, Detrending, Decomposition",
               "Holding days vs return, index vs volume, the index with its trend removed, and its repeating cycle.",
               "Decomposition splits a series into trend + season + noise.")
@@ -546,14 +539,14 @@ def build_all():
     c.path(pd_.line(range(len(sea)), sea), "#9333EA", w=2, a="d", dl=5)
     charts.append(c.out())
 
-    # ---------- maps shared
+
     cities = {}
     for st_, (city, reg, la, lo) in dbs.INVESTOR_CITIES.items(): cities[st_] = (city, reg, la, lo)
     NSE = (dbs.EXCHANGE[1], dbs.EXCHANGE[2])
     REGC = {"North": "#4F46E5", "West": "#EA580C", "South": "#0891B2", "East": "#9333EA"}
     def merc(la): return math.log(math.tan(math.pi / 4 + math.radians(la) / 2))
 
-    # ---------- 22 Projections
+
     c = Chart(22, "Unit 5", "Geospatial: Map Projections",
               "The 10 investor cities and NSE Mumbai under three projections. Same places, different shapes.",
               "Every flat map distorts something: area, shape or distance.")
@@ -574,7 +567,7 @@ def build_all():
     for k, (rg, col) in enumerate(REGC.items()): c.circ(130 + k * 70, 262, 4, col); c.text(138 + k * 70, 265, rg, 8.5, INK)
     charts.append(c.out())
 
-    # ---------- 23 Map layers
+
     c = Chart(23, "Unit 5", "Geospatial: Map Layers",
               "Layer 1 grid, layer 2 cities sized by investors, layer 3 order routes to NSE Mumbai, layer 4 labels.",
               "A map is a stack of layers; each adds one kind of information.")
@@ -594,7 +587,7 @@ def build_all():
         c.rect(356, 60 + k * 44, 110, 34, "#FFFFFF", 6, a="f", dl=k * 3, sk="#D5D9E4"); c.text(364, 81 + k * 44, t_, 8.5, INK, wt=600)
     charts.append(c.out())
 
-    # ---------- 24 Choropleth / 25 Cartogram (tile grid)
+
     TILES = {"Delhi": (2, 0), "Rajasthan": (1, 1), "Uttar Pradesh": (3, 1), "Gujarat": (0, 2), "West Bengal": (4, 2),
              "Maharashtra": (1, 3), "Telangana": (2, 3), "Karnataka": (1, 4), "Kerala": (1, 5), "Tamil Nadu": (2, 5)}
     ABBR = {"Delhi": "DL", "Rajasthan": "RJ", "Uttar Pradesh": "UP", "Gujarat": "GJ", "West Bengal": "WB", "Maharashtra": "MH",
@@ -626,7 +619,7 @@ def build_all():
     for k, (rg, col) in enumerate(REGC.items()): c.circ(420, 80 + k * 22, 5, col); c.text(430, 83 + k * 22, rg, 9, INK)
     charts.append(c.out())
 
-    # ---------- 26 Supply chain
+
     c = Chart(26, "Case Study", "Supply Chain: Share Delivery Tracker (All Regions)",
               "Every buy order travels Investor -> Broker -> NSE -> Clearing -> Depository -> Demat. Target: T+1.",
               "Delay comes from brokers and paperwork, not distance.")
@@ -650,7 +643,7 @@ def build_all():
     c.text(395, 182, "%.0f%%" % ot, 17, INK, "middle", 750); c.text(395, 205, "on time (T+1)", 8, MUT, "middle"); c.text(395, 222, "target 95%", 8, MUT, "middle")
     charts.append(c.out())
 
-    # ================================================================ APP DATA
+
     dates = [d.strftime("%Y-%m-%d") for d in mindex["date"]]
     g = prices.sort_values(["stock_id", "date"])
     stocks = []

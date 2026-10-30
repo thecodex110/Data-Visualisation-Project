@@ -358,7 +358,7 @@ CODE KAHAN HAI:
 
   26 CHARTS - FUNCTION AUR LINE (sab visualizations.py me):
   ---------------------------------------------------------------------------------
-   #  Unit     Chart                                        Function (line)
+   # Unit     Chart                                        Function (line)
   ---------------------------------------------------------------------------------
    1  Unit 1   Design Principles (bad 3D vs clean bar)      plot_design_principles_demo (163)
    2  Unit 1   Categorical / Time Series / Statistical      plot_data_graphic_types (200)
@@ -494,7 +494,7 @@ YE OPTION KYUN HAI:
   India me rule: shares T+1 pe aane chahiye (T = order ka din, T+1 = agla trading
   din). Usse late = LATE delivery.
 
-  PARCEL WORD  ->  STOCK MARKET WORD
+  PARCEL WORD  -> STOCK MARKET WORD
     shipment       = ek buy order (deliveries table ki ek row)
     courier        = broker (Zerodha, Groww, Upstox, Angel One, ICICI Direct)
     route          = investor ka shehar -> NSE Mumbai
@@ -620,7 +620,7 @@ CODE KAHAN HAI:
 QUICK REFERENCE: OPTION -> FILE -> FUNCTION
 =====================================================================================
    Opt  Kaam                       File                Function
-   ---  -------------------------  ------------------  ------------------------------
+   --- ------------------------- ------------------ ------------------------------
     1   Watchlist dekhna           main.py             view_stocks
                                    preprocessing.py    get_stock_summary
     2   Stock add                  main.py             add_stock

@@ -11,7 +11,6 @@ def get_connection(db_path=DB_NAME):
     return sqlite3.connect(db_path)
 
 def load_raw_data(db_path=DB_NAME):
-    """Loads raw dataframes from sqlite database."""
     conn = get_connection(db_path)
 
     sectors_df = pd.read_sql_query("SELECT * FROM sectors;", conn)
@@ -23,10 +22,6 @@ def load_raw_data(db_path=DB_NAME):
     return sectors_df, investors_df, stocks_df, trades_df
 
 def get_clean_prices(db_path=DB_NAME):
-    """
-    Cleans the daily price feed: text dates -> datetime, missing closing prices forward-filled
-    per stock, then daily return (%) is calculated. Enriched with stock and sector details.
-    """
     conn = get_connection(db_path)
     df = pd.read_sql_query("""
         SELECT p.stock_id, s.symbol, s.company_name, sec.sector_name,
@@ -40,23 +35,21 @@ def get_clean_prices(db_path=DB_NAME):
 
     df['date'] = pd.to_datetime(df['trade_date'])
     df['close_was_missing'] = df['close'].isnull()
-    # Forward fill = "if today's price is missing, use the last known price of the same stock"
+
+    # missing closing price -> use last known price of the same stock
     df['close'] = df.groupby('stock_id')['close'].ffill().bfill()
     df['daily_return'] = df.groupby('stock_id')['close'].pct_change() * 100
     df['month'] = df['date'].dt.to_period('M').astype(str)
     return df
 
 def get_latest_prices(db_path=DB_NAME):
-    """Last cleaned closing price of every stock (Series indexed by stock_id)."""
     prices = get_clean_prices(db_path)
     return prices.groupby('stock_id')['close'].last()
 
 def _max_drawdown(close):
-    """Largest fall (%) from a previous peak."""
     return float(((close / close.cummax()) - 1).min() * 100)
 
 def get_market_index(db_path=DB_NAME):
-    """Equal-weight market index (base 1000) built from the average daily return of all stocks."""
     prices = get_clean_prices(db_path)
     daily = prices.groupby('date').agg(avg_return=('daily_return', 'mean'), volume=('volume', 'sum')).reset_index()
     daily['avg_return'] = daily['avg_return'].fillna(0)
@@ -68,13 +61,11 @@ def get_market_index(db_path=DB_NAME):
     return daily
 
 def get_sector_index(db_path=DB_NAME):
-    """Sector indices (base 100): average daily return of the stocks in each sector, compounded."""
     prices = get_clean_prices(db_path)
     sec = prices.groupby(['date', 'sector_name'])['daily_return'].mean().unstack().fillna(0)
     return 100 * (1 + sec / 100).cumprod()
 
 def get_stock_summary(db_path=DB_NAME):
-    """One row per stock: last price, 1-day and 1-year return, volatility, drawdown, beta, moving averages."""
     prices = get_clean_prices(db_path)
     market = get_market_index(db_path).set_index('date')['avg_return']
     rows = []
@@ -101,10 +92,6 @@ def get_stock_summary(db_path=DB_NAME):
     return summary
 
 def get_cleaned_trades(db_path=DB_NAME):
-    """
-    Cleans raw trade data, handles open positions (missing sell date), calculates holding days,
-    profit/loss and return %, and enriches with investor, stock and sector details.
-    """
     conn = get_connection(db_path)
 
     query = """
@@ -137,17 +124,17 @@ def get_cleaned_trades(db_path=DB_NAME):
     latest = get_latest_prices(db_path)
     today = pd.Timestamp(datetime.now().date())
 
-    # Convert dates
+
     df['buy_date_dt'] = pd.to_datetime(df['buy_date'])
     df['sell_date_dt'] = pd.to_datetime(df['sell_date'])
     df['buy_month'] = df['buy_date_dt'].dt.to_period('M').astype(str)
     is_sold = df['sell_date_dt'].notnull()
 
-    # Open position -> value it at today's market price
+
     df['current_price'] = df['stock_id'].map(latest)
     df['exit_price'] = np.where(is_sold, df['sell_price'], df['current_price'])
 
-    # Holding days (sell date or today) - at least 1 day
+
     df['holding_days'] = np.where(
         is_sold,
         (df['sell_date_dt'] - df['buy_date_dt']).dt.days,
@@ -155,14 +142,14 @@ def get_cleaned_trades(db_path=DB_NAME):
     )
     df['holding_days'] = df['holding_days'].clip(lower=1)
 
-    # Money columns
+
     df['invested'] = df['buy_price'] * df['quantity']
     df['pnl'] = (df['exit_price'] - df['buy_price']) * df['quantity']
     df['return_pct'] = (df['exit_price'] / df['buy_price'] - 1) * 100
     df['stop_loss_hit'] = (~is_sold) & (df['current_price'] <= df['stop_loss'])
     df['risk_label'] = df['risk_profile'].map(RISK_PROFILES)
 
-    # Status categorisation
+
     conditions = [
         is_sold & (df['pnl'] > 0),
         is_sold & (df['pnl'] <= 0),
@@ -172,16 +159,15 @@ def get_cleaned_trades(db_path=DB_NAME):
     choices = ['Profit Booked', 'Loss Booked', 'Open - In Profit', 'Open - In Loss']
     df['status'] = np.select(conditions, choices, default='Unknown')
 
-    # Simplified Status for high-level charts (Profit Booked, Loss Booked, Open)
+
     df['simple_status'] = np.where(df['status'].str.startswith('Open'), 'Open', df['status'])
 
-    # Display friendly sell date string
+
     df['sell_date_display'] = df['sell_date'].fillna('Open')
 
     return df
 
 def get_sector_aggregates(db_path=DB_NAME):
-    """Aggregates stock count, traded value, trade outcomes and 1-year return by Sector."""
     trades = get_cleaned_trades(db_path)
     sectors = load_raw_data(db_path)[0]
     stocks = get_stock_summary(db_path)
@@ -193,7 +179,7 @@ def get_sector_aggregates(db_path=DB_NAME):
     ).reset_index()
     per_sector = pd.merge(sectors, per_sector, on='sector_name', how='left').fillna(0)
 
-    # Trade counts per sector
+
     counts = trades.groupby(['sector_name', 'simple_status']).size().unstack(fill_value=0).reset_index()
     for col in ['Profit Booked', 'Loss Booked', 'Open']:
         if col not in counts.columns:
@@ -206,7 +192,6 @@ def get_sector_aggregates(db_path=DB_NAME):
     return summary
 
 def get_stock_trade_aggregates(db_path=DB_NAME):
-    """Aggregates number of trades and traded value by Stock (most traded stocks)."""
     trades = get_cleaned_trades(db_path)
     agg = trades.groupby(['symbol', 'sector_name']).agg(
         total_trades=('trade_id', 'count'),
@@ -217,23 +202,20 @@ def get_stock_trade_aggregates(db_path=DB_NAME):
     return agg.sort_values('total_trades', ascending=False)
 
 def get_monthly_sector_returns(db_path=DB_NAME):
-    """Pivots prices into Sector x Month average monthly return (%)."""
     prices = get_clean_prices(db_path)
     monthly = prices.groupby(['stock_id', 'sector_name', 'month'])['close'].last().reset_index()
     monthly['monthly_return'] = monthly.groupby('stock_id')['close'].pct_change() * 100
     pivot = monthly.dropna().pivot_table(index='sector_name', columns='month', values='monthly_return', aggfunc='mean')
-    # Sort months chronologically
+
     return pivot[sorted(pivot.columns)]
 
 def get_monthly_stock_returns(db_path=DB_NAME):
-    """One row per stock per month: monthly return (%) - used for many-distribution charts."""
     prices = get_clean_prices(db_path)
     monthly = prices.groupby(['stock_id', 'symbol', 'sector_name', 'month'])['close'].last().reset_index()
     monthly['monthly_return'] = monthly.groupby('stock_id')['close'].pct_change() * 100
     return monthly.dropna()
 
 def get_monthly_timeseries(db_path=DB_NAME):
-    """Aggregates monthly trades, sells, traded value, realised P&L and month-end index level."""
     trades = get_cleaned_trades(db_path)
     index = get_market_index(db_path)
 
@@ -251,12 +233,11 @@ def get_monthly_timeseries(db_path=DB_NAME):
     monthly['month_dt'] = pd.to_datetime(monthly['month'] + '-01')
     monthly = monthly.sort_values('month_dt').reset_index(drop=True)
 
-    # Rolling 3-month average
+
     monthly['rolling_3m_buys'] = monthly['buy_count'].rolling(window=3, min_periods=1).mean()
     return monthly
 
 def get_investor_summary(db_path=DB_NAME):
-    """One row per investor: trades, average holding days, win rate, total invested and total P&L."""
     trades = get_cleaned_trades(db_path)
     investors = load_raw_data(db_path)[1]
 
@@ -275,14 +256,12 @@ def get_investor_summary(db_path=DB_NAME):
     return summary
 
 def get_stock_return_matrix(db_path=DB_NAME):
-    """Dates x stocks matrix of daily returns (used for PCA dimension reduction)."""
     prices = get_clean_prices(db_path)
     matrix = prices.pivot_table(index='date', columns='symbol', values='daily_return').dropna()
     sectors = prices.drop_duplicates('symbol').set_index('symbol')['sector_name']
     return matrix, sectors
 
 def get_state_geospatial_summary(db_path=DB_NAME):
-    """Aggregates investor count, traded value and P&L by Indian home state."""
     trades = get_cleaned_trades(db_path)
     investors = load_raw_data(db_path)[1]
 
@@ -298,7 +277,6 @@ def get_state_geospatial_summary(db_path=DB_NAME):
     return geo
 
 def analyse_stock(stock_id, db_path=DB_NAME, prices=None):
-    """Technical analysis of one stock: returns, volatility, moving averages, RSI and a buy/sell signal."""
     if prices is None:
         prices = get_clean_prices(db_path)
     g = prices[prices['stock_id'] == stock_id].reset_index(drop=True)
@@ -307,8 +285,9 @@ def analyse_stock(stock_id, db_path=DB_NAME, prices=None):
     g['dma_20'] = g['close'].rolling(20, min_periods=1).mean()
     g['dma_50'] = g['close'].rolling(50, min_periods=1).mean()
 
-    # RSI(14): average gain vs average loss of the last 14 days (above 70 = overbought, below 30 = oversold)
+
     change = g['close'].diff()
+    # RSI (14 days)
     gain = change.clip(lower=0).rolling(14, min_periods=1).mean()
     loss = (-change.clip(upper=0)).rolling(14, min_periods=1).mean()
     g['rsi'] = 100 - 100 / (1 + gain / loss.replace(0, np.nan))
@@ -338,7 +317,6 @@ def analyse_stock(stock_id, db_path=DB_NAME, prices=None):
     return report, g
 
 def print_cleaning_report(db_path=DB_NAME):
-    """Terminal report of the cleaning + aggregation pipeline (raw -> clean -> aggregated)."""
     sectors, investors, stocks, trades = load_raw_data(db_path)
     conn = get_connection(db_path)
     raw_prices = pd.read_sql_query("SELECT * FROM price_history;", conn)
@@ -382,8 +360,6 @@ def print_cleaning_report(db_path=DB_NAME):
     print("=" * 70 + "\n")
 
 def get_market_kpis(sector_name=None, risk_profile=None, db_path=DB_NAME, trades=None, stocks=None):
-    """Power BI style headline measures, optionally sliced by sector and investor risk profile.
-    trades / stocks can be passed in already loaded (the website builds all 35 slicer combinations at once)."""
     trades = get_cleaned_trades(db_path) if trades is None else trades
     stocks = get_stock_summary(db_path) if stocks is None else stocks
     if sector_name:
@@ -414,7 +390,6 @@ def get_market_kpis(sector_name=None, risk_profile=None, db_path=DB_NAME, trades
     }
 
 def format_inr(value, sign=False):
-    """Indian style money text: Rs 1.37 Cr / Rs 15.1 L / Rs 8,500."""
     prefix = ('+' if value > 0 else '-' if value < 0 else '') if sign else ('-' if value < 0 else '')
     v = abs(value)
     if v >= 1e7:
@@ -424,7 +399,6 @@ def format_inr(value, sign=False):
     return f"{prefix}Rs {v:,.0f}"
 
 def get_top_movers(n=5, sector_name=None, db_path=DB_NAME):
-    """Today's biggest gainers and losers (by 1-day % change)."""
     stocks = get_stock_summary(db_path)
     if sector_name:
         stocks = stocks[stocks['sector_name'] == sector_name]
@@ -432,7 +406,6 @@ def get_top_movers(n=5, sector_name=None, db_path=DB_NAME):
     return ranked.head(n), ranked.tail(n).iloc[::-1]
 
 def market_mood(breadth_pct):
-    """Plain-language market mood from breadth (% of stocks above their 50-day average)."""
     if breadth_pct >= 60:
         return "BULLISH", "most stocks are in an uptrend"
     if breadth_pct >= 40:
@@ -440,7 +413,6 @@ def market_mood(breadth_pct):
     return "BEARISH", "most stocks are in a downtrend"
 
 def get_cleaned_deliveries(region=None, db_path=DB_NAME):
-    """Cleans the share-delivery log (Supply Chain case study): settlement days, delay and status."""
     conn = get_connection(db_path)
     df = pd.read_sql_query("""
         SELECT d.*, t.quantity, t.buy_price, t.investor_id, i.name AS investor_name,
@@ -452,15 +424,15 @@ def get_cleaned_deliveries(region=None, db_path=DB_NAME):
         JOIN sectors sec ON s.sector_id = sec.sector_id;
     """, conn)
     conn.close()
-    
+
     today = pd.Timestamp(datetime.now().date())
     df['order_dt'] = pd.to_datetime(df['order_date'])
     df['expected_dt'] = pd.to_datetime(df['expected_date'])
     df['delivery_dt'] = pd.to_datetime(df['delivery_date'])
     delivered = df['delivery_dt'].notnull()
     end = df['delivery_dt'].fillna(today)
-    
-    # Settlement is counted in TRADING days (weekends do not count): T+1 = 1
+
+
     df['settle_days'] = [np.busday_count(o.date(), e.date()) for o, e in zip(df['order_dt'], end)]
     df['delay_days'] = [max(0, np.busday_count(x.date(), e.date())) for x, e in zip(df['expected_dt'], end)]
     df['order_value'] = df['quantity'] * df['buy_price']
@@ -476,7 +448,6 @@ def get_cleaned_deliveries(region=None, db_path=DB_NAME):
     return df
 
 def get_broker_scorecard(region=None, db_path=DB_NAME):
-    """Per broker: orders, on-time T+1 delivery %, average delay and a report-card grade."""
     deliv = get_cleaned_deliveries(region, db_path)
     done = deliv[deliv['status'].str.startswith('Delivered')]
     score = done.groupby('broker').agg(
@@ -485,7 +456,7 @@ def get_broker_scorecard(region=None, db_path=DB_NAME):
         late=('status', lambda s: (s == 'Delivered Late').sum()),
         avg_settle_days=('settle_days', 'mean')
     ).reset_index()
-    # Grade: A = almost always on time, B = sometimes late, C = often late
+
     score['grade'] = np.select([score['on_time_pct'] >= 95, score['on_time_pct'] >= 88], ['A', 'B'], default='C')
     return score.sort_values('on_time_pct', ascending=False)
 

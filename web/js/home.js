@@ -1,4 +1,3 @@
-/* Home: hero ridge of sector indices, index strip, market today, big stats. */
 ML.topbar('index.html', { ticker: true });
 ML.footer();
 ML.reveal();
@@ -18,7 +17,6 @@ ML.data().then((d) => {
     [k.breadth_pct.toFixed(1) + '%', 'Stocks above 50-DMA', '#0E1324']
   ].map(([v, l, c]) => '<div><div class="mono" style="font-size:26px;font-weight:700;color:' + c + '">' + v + '</div><div class="small" style="margin-top:2px">' + l + '</div></div>').join('');
 
-  /* 3D ridge: each sector index drawn on its own layer, shifted back and up like a terrain */
   const all = secs.flatMap((s) => d.sectors[s]);
   const lo = Math.min(...all), hi = Math.max(...all);
   let svg = '<defs><linearGradient id="ridgeF" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8B85FF" stop-opacity="0.42"></stop><stop offset="1" stop-color="#EEF0FF" stop-opacity="0.05"></stop></linearGradient>' +
@@ -45,7 +43,6 @@ ML.data().then((d) => {
   const w = sr[sr.length - 1];
   $('h-worst').innerHTML = '<span style="font-weight:750;font-size:15px">' + esc(w.s) + '</span><span class="mono" style="color:' + col(w.v) + ';font-weight:700;font-size:14px">' + pct(w.v, 1) + '</span>';
 
-  /* index strip */
   const card = (name, vals, c, href) => {
     const sp = ML.spark(vals, 140, 36, 3), ch = (vals[vals.length - 1] / vals[0] - 1) * 100;
     return '<a class="lift" href="' + href + '"><div style="display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;letter-spacing:.05em;color:#5B6478"><span style="width:8px;height:8px;border-radius:3px;background:' + c + '"></span>' + esc(name) + '</div>' +
@@ -54,7 +51,6 @@ ML.data().then((d) => {
   };
   $('idx-strip').innerHTML = card('MARKET', lv, '#0E1324', 'dashboard.html') + secs.map((s) => card(s.toUpperCase(), d.sectors[s], d.secColors[s], 'dashboard.html?sector=' + encodeURIComponent(s))).join('');
 
-  /* market today */
   const mood = k.breadth_pct >= 60 ? 'Bullish' : k.breadth_pct >= 40 ? 'Neutral' : 'Bearish';
   const rising = Math.round(k.breadth_pct / 100 * k.stocks);
   $('mood-title').innerHTML = 'The mood is <span style="color:' + (mood === 'Bullish' ? UP : mood === 'Bearish' ? DN : '#CA8A04') + '">' + mood + '</span>.';

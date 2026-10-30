@@ -1,4 +1,3 @@
-/* Charts Lab (Options 12 & 13): all 26 syllabus charts, unit tabs, spotlight with prev / next / replay. */
 ML.topbar('charts.html', { dark: true });
 ML.footer(true);
 
@@ -19,7 +18,7 @@ function renderSpot() {
   $('sp-desc').textContent = c.desc;
   $('sp-ins').innerHTML = '<strong>Takeaway · </strong>' + ML.esc(c.insight);
   $('sp-pos').textContent = c.id + ' / ' + C.length;
-  $('sp-plot').innerHTML = ML.chartSVG(c);   // fresh SVG = the animation plays again
+  $('sp-plot').innerHTML = ML.chartSVG(c);
 }
 
 function renderGrid() {

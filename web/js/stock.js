@@ -1,4 +1,3 @@
-/* Search & Analyse (Option 4): searchable stock list, candlestick / line chart with DMAs, volume, RSI and the signal. */
 ML.topbar('stock.html');
 ML.footer();
 
@@ -7,7 +6,7 @@ let D = null, G = null;
 const $ = (id) => document.getElementById(id);
 
 function sma(a, n) { const out = []; let s = 0; for (let i = 0; i < a.length; i++) { s += a[i]; if (i >= n) s -= a[i - n]; out.push(s / Math.min(i + 1, n)); } return out; }
-/* RSI(14) the same way preprocessing.analyse_stock does it: average gain / average loss of the last 14 days */
+// RSI 14: average gain / average loss
 function rsi(c) {
   const out = [50];
   for (let i = 1; i < c.length; i++) {
@@ -63,7 +62,6 @@ function renderStock() {
   ];
   $('stats').innerHTML = '<div style="font-size:13px;font-weight:700">Risk &amp; technicals</div>' + rows.map(([l, v, n, c]) => '<div style="display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid #F1F2F7;gap:10px"><span style="font-size:13px;color:#4A5266">' + l + '</span><span style="text-align:right"><span class="mono" style="font-size:13.5px;font-weight:700;color:' + c + '">' + v + '</span> <span class="small" style="font-size:11px">' + n + '</span></span></div>').join('');
 
-  /* chart geometry for the selected range */
   const n = Math.min(st.range, N), off = N - n, sl = (a) => a.slice(off);
   const o = sl(s.o), h = sl(s.h), l = sl(s.l), c = sl(s.c), v = sl(s.v), m20 = sl(ma20), m50 = sl(ma50), r = sl(rs), dates = D.dates.slice(off);
   let lo = Math.min(...l, ...m20, ...m50), hi = Math.max(...h, ...m20, ...m50); const pad = (hi - lo) * 0.06; lo -= pad; hi += pad;
@@ -98,7 +96,6 @@ function renderStock() {
   history.replaceState(null, '', '?s=' + encodeURIComponent(s.sym));
 }
 
-/* crosshair + OHLC readout without re-drawing the chart */
 function showTip(i) {
   if (!G) return;
   const { num, col } = ML, k = i == null ? G.n - 1 : i;

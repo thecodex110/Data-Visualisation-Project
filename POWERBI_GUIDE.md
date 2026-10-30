@@ -213,4 +213,3 @@ Use the `deliveries` sheet to rebuild the Python case-study dashboard (main menu
    - **Slicer on `region`** (North / West / South / East) for filtering by region
 
 ---
-*Guide generated for the Stock Market Analysis System (DV Mini Project).*

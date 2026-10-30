@@ -1,16 +1,3 @@
-"""
-MarketLens website: the same Stock Market Analysis System, in the browser.
-
-Run:  python3 web_app.py          (or Option 17 in the main menu / python3 main.py --web)
-Open: http://localhost:8000
-
-Uses only Python's built-in web server, so no extra package is needed.
-  - web/            HTML, CSS and JavaScript of the six pages
-  - /api/data       watchlist, OHLC prices, KPIs for every slicer, investors, trades, deliveries
-  - /api/charts     the 26 syllabus charts as SVG shapes (built by web_data.py)
-  - /api/buy, /api/sell, /api/investors   write to stock_market.db like Options 7, 8 and 6
-  - /api/export     downloads stock_market_export.xlsx (Option 16)
-"""
 import os
 import sys
 import json
@@ -32,8 +19,8 @@ WEB_DIR = os.path.join(ROOT, "web")
 _cache = {}
 _lock = threading.Lock()
 
+# data is built once and kept in memory, rebuilt after a buy / sell
 def get_payload(name):
-    """Builds charts + data once and keeps them in memory until the database changes."""
     with _lock:
         if not _cache:
             charts, data = web_data.build_all()
@@ -69,7 +56,7 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=WEB_DIR, **kwargs)
 
     def log_message(self, fmt, *args):
-        # args[0] is the request line for normal logs but an HTTPStatus for error logs (e.g. a 404)
+
         if "/api/" in str(args[0] if args else ""):
             sys.stderr.write(" [web] " + (fmt % args) + "\n")
 
@@ -134,7 +121,7 @@ def run(port=8000, open_browser=True):
     url = "http://localhost:%d" % port
     print("\n [Web] Building charts and data from stock_market.db ...")
     get_payload('data')
-    print(f" [✓] MarketLens website running at {url}")
+    print(f" [OK] MarketLens website running at {url}")
     print("     Pages: Home | Dashboard | Stocks | Charts Lab (26 charts) | Investors & Trade | Delivery")
     print("     Press Ctrl+C to stop the website and go back.\n")
     if open_browser:

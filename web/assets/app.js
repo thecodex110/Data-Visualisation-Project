@@ -1,4 +1,3 @@
-/* MarketLens shared helpers: data loading, number formats, top bar, chart renderer, toasts. */
 (function () {
   const UP = '#08805A', DN = '#D12B42';
   const PAGES = [
@@ -85,7 +84,7 @@
     return { line, area: line + ' L' + w + ',' + h + ' L0,' + h + ' Z' };
   }
 
-  /* Renders one syllabus chart spec (from /api/charts) into an animated SVG string. */
+    // draws one chart from /api/charts as svg
   function chartSVG(c, label) {
     const a = (cls) => (cls ? ' class="' + cls + '"' : '');
     let s = '<svg viewBox="0 0 480 300" style="width:100%;height:auto;display:block" role="img" aria-label="' + esc(label || c.title) + '">' +
@@ -101,7 +100,6 @@
     return s + '</svg>';
   }
 
-  /* Fades sections in as they scroll into view. */
   function reveal(root) {
     const els = (root || document).querySelectorAll('.reveal:not(.in)');
     if (!('IntersectionObserver' in window)) { els.forEach((e) => e.classList.add('in')); return; }

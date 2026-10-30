@@ -1,4 +1,3 @@
-/* Share Delivery Tracker (Option 15, case study): animated chain, region slicer, KPIs, route map, brokers, delays, monthly trend. */
 ML.topbar('delivery.html', { dark: true });
 ML.footer();
 
@@ -31,13 +30,12 @@ function render() {
     '<path d="M60 6 V18" stroke="#0E1324" stroke-width="2" transform="rotate(342 60 60)"><title>95% target</title></path>' +
     '<text x="60" y="64" font-size="22" text-anchor="middle" font-family="JetBrains Mono" font-weight="700" fill="#0E1324">' + Math.round(v.ontime) + '%</text><text x="60" y="80" font-size="9" text-anchor="middle" font-family="Inter" fill="#5B6478">on time</text>';
   $('ot-note').textContent = 'About ' + Math.round(v.ontime) + ' of every 100 investors got their shares on the next trading day.';
-  $('ot-verdict').textContent = v.ontime >= 95 ? '✓ Meets the 95% target' : '✗ Below the 95% target';
+  $('ot-verdict').textContent = v.ontime >= 95 ? 'Meets the 95% target' : 'Below the 95% target';
   $('ot-verdict').style.color = oc;
   $('kpis').innerHTML = [['Buy orders (shipments)', String(v.orders), 'worth ' + inr(v.value), '#0E1324'], ['Shares delivered', v.shares.toLocaleString('en-IN'), 'reached a demat account', '#0E1324'],
     ['Late · pending', v.late + ' · ' + v.pending, 'late deliveries · still in settlement', v.late ? '#D12B42' : '#08805A'], ['Average time to demat', 'T+' + v.avgdays.toFixed(2), 'trading days (target T+1.00)', '#0E1324']]
     .map(([l, val, n, c], i) => '<div class="card anim-up" style="padding:18px;animation-delay:' + (i * 0.05) + 's"><div style="font-size:12.5px;font-weight:650;color:#5B6478">' + l + '</div><div class="mono" style="font-size:26px;font-weight:700;letter-spacing:-.02em;margin-top:8px;color:' + c + '">' + val + '</div><div class="small" style="margin-top:4px">' + n + '</div></div>').join('');
 
-  /* route map: simple lon/lat projection of the 10 investor cities, arcs to NSE Mumbai */
   const W = 520, H = 400, lon0 = 68, lon1 = 92, lat0 = 7, lat1 = 31;
   const X = (lo) => 30 + (lo - lon0) / (lon1 - lon0) * (W - 60), Y = (la) => 20 + (1 - (la - lat0) / (lat1 - lat0)) * (H - 40);
   let m = '<rect width="520" height="460" rx="16" fill="#F7F8FC"></rect>';
@@ -46,7 +44,6 @@ function render() {
   const nx = X(D.nse.lon), ny = Y(D.nse.lat), byCity = {}, regC = {};
   all.routes.forEach((r) => { byCity[r.city] = r; }); v.routes.forEach((r) => { regC[r.city] = r; });
   const maxN = Math.max(...all.routes.map((r) => r.n));
-  // cities that sit close to a neighbour get their label on the other side
   const LABEL_SIDE = { 'Jaipur': 'left', 'Bengaluru': 'left', 'Ahmedabad': 'left', 'Pune': 'right' };
   let arcs = '', dots = '';
   D.cities.forEach((c, i) => {

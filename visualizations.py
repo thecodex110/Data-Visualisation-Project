@@ -1,4 +1,3 @@
-# All import
 import os
 import sys
 import subprocess
@@ -7,9 +6,7 @@ import numpy as np
 import pandas as pd
 import matplotlib
 
-# The menu process never opens a GUI window itself: on macOS, quitting a matplotlib window
-# (Cmd+Q) quits the whole Python program. Charts are drawn off-screen ('Agg') and opened in
-# the system image viewer instead; the live interactive chart runs in its own child process.
+
 LIVE_WINDOW = os.environ.get("DV_LIVE_WINDOW") == "1"
 if not LIVE_WINDOW:
     matplotlib.use("Agg")
@@ -51,7 +48,7 @@ from db_setup import INVESTOR_CITIES, EXCHANGE, RISK_PROFILES
 
 CHARTS_DIR = "charts"
 
-# When False (batch mode: `python main.py --all`) charts are only saved, no windows pop up
+
 SHOW_WINDOWS = True
 
 def set_show_windows(flag):
@@ -62,7 +59,6 @@ def ensure_dirs():
     os.makedirs(CHARTS_DIR, exist_ok=True)
 
 def open_in_viewer(path):
-    """Opens a saved PNG in the system image viewer (Preview on macOS) without blocking the menu."""
     try:
         if sys.platform == "darwin":
             subprocess.Popen(["open", path])
@@ -74,21 +70,18 @@ def open_in_viewer(path):
         print(f" [i] Could not open the image automatically ({e}). Open it from the charts/ folder.")
 
 def open_live_window(func_name):
-    """Runs one chart function in a separate Python process with a real (interactive) window.
-    Closing or quitting that window only ends the child process - the menu keeps running."""
     env = dict(os.environ, DV_LIVE_WINDOW="1")
     code = f"import visualizations as v; v.{func_name}()"
     subprocess.Popen([sys.executable, "-c", code], cwd=os.path.dirname(os.path.abspath(__file__)), env=env)
     print(" [i] Live interactive window is opening in a separate process (the menu stays usable).")
 
 def save_chart(filename, label, fig=None, live_func=None):
-    """Saves the current (or given) figure to charts/, then shows it without ever blocking or closing the menu."""
     ensure_dirs()
     out_path = os.path.join(CHARTS_DIR, filename)
     (fig or plt.gcf()).savefig(out_path, dpi=200, bbox_inches='tight')
     try:
         if LIVE_WINDOW:
-            plt.show()                      # only inside the child process
+            plt.show()
             return out_path
         print(f" [Chart Saved] {label} -> {out_path}")
         if SHOW_WINDOWS:
@@ -100,7 +93,7 @@ def save_chart(filename, label, fig=None, live_func=None):
         plt.close('all')
     return out_path
 
-# Professional modern styling
+
 sns.set_theme(style="whitegrid", palette="muted")
 plt.rcParams.update({
     'font.sans-serif': ['DejaVu Sans', 'Arial', 'Helvetica'],
@@ -114,7 +107,7 @@ plt.rcParams.update({
     'figure.autolayout': False
 })
 
-# One fixed colour per sector across every chart (consistent aesthetic mapping)
+
 SECTOR_PALETTE = {
     'IT': '#1D4ED8',
     'Banking': '#0D9488',
@@ -124,13 +117,13 @@ SECTOR_PALETTE = {
     'Energy': '#CA8A04'
 }
 SECTOR_ORDER = list(SECTOR_PALETTE)
-# Market convention: green = profit, red = loss, blue = still open
-STATUS_COLORS = ['#16A34A', '#DC2626', '#2563EB']   # Profit Booked, Loss Booked, Open
+
+STATUS_COLORS = ['#16A34A', '#DC2626', '#2563EB']
 STATUS_ORDER = ['Profit Booked', 'Loss Booked', 'Open']
 UP, DOWN = '#16A34A', '#DC2626'
 RISK_ORDER = [RISK_PROFILES[k] for k in sorted(RISK_PROFILES)]
 
-# Approximate state centroids (latitude, longitude) for geospatial charts
+
 STATE_COORDS = {
     "Maharashtra": (19.7515, 75.7139), "Karnataka": (15.3173, 75.7139),
     "Gujarat": (22.2587, 71.1924), "Delhi": (28.7041, 77.1025),
@@ -138,13 +131,13 @@ STATE_COORDS = {
     "Rajasthan": (27.0238, 74.2179), "Kerala": (10.8505, 76.2711),
     "West Bengal": (22.9868, 87.8550), "Telangana": (18.1124, 79.0193)
 }
-# Tile-grid positions (column, row from top) that keep rough geographic placement
+
 STATE_TILES = {
     "Delhi": (2, 0), "Rajasthan": (1, 1), "Uttar Pradesh": (3, 1),
     "Gujarat": (0, 2), "West Bengal": (4, 2), "Maharashtra": (1, 3),
     "Telangana": (2, 3), "Karnataka": (1, 4), "Kerala": (1, 5), "Tamil Nadu": (2, 5)
 }
-# National Stock Exchange, BKC Mumbai: where every order is matched
+
 EXCHANGE_LOCATION = EXCHANGE
 
 def _clean_axes(ax):
@@ -156,17 +149,14 @@ def _month_ticks(ax, every=1):
     for i, lbl in enumerate(ax.get_xticklabels()):
         lbl.set_visible(i % every == 0)
 
-# ==============================================================================
-# UNIT 1: INTRODUCTION (Design Principles; Categorical, Time Series & Statistical Graphics)
-# ==============================================================================
 
+# ---------- Unit 1 ----------
 def plot_design_principles_demo():
-    """Bad vs Good Chart Demonstration: Poor 3D Clutter vs Clean Horizontal Bar Chart."""
     summary = get_sector_aggregates()
 
     fig = plt.figure(figsize=(14, 5.5))
 
-    # 1. Deliberately Poor Chart (Violates Proportional Ink & Minimal Junk)
+
     ax1 = fig.add_subplot(1, 2, 1, projection='3d')
     sectors = summary['sector_name'].tolist()
     values = summary['traded_value_lakh'].tolist()
@@ -179,7 +169,7 @@ def plot_design_principles_demo():
     ax1.set_xticks(x)
     ax1.set_xticklabels(sectors, rotation=45, fontsize=8)
 
-    # 2. Corrected Clean Chart (High Data-Ink Ratio, Accurate Linear Scaling)
+
     ax2 = fig.add_subplot(1, 2, 2)
     summary_sorted = summary.sort_values('traded_value_lakh', ascending=True)
     bars = ax2.barh(summary_sorted['sector_name'], summary_sorted['traded_value_lakh'], color='#2563EB', height=0.6)
@@ -198,13 +188,12 @@ def plot_design_principles_demo():
     save_chart("design_principles_comparison.png", "Design Principles Comparison")
 
 def plot_data_graphic_types():
-    """The three families of data graphics: categorical, time series and statistical."""
     df = get_cleaned_trades()
     idx = get_market_index()
 
     fig, axes = plt.subplots(1, 3, figsize=(16, 4.8))
 
-    # 1. Categorical data -> bar chart
+
     status_counts = df['simple_status'].value_counts().reindex(STATUS_ORDER).fillna(0)
     axes[0].bar(status_counts.index, status_counts.values, color=STATUS_COLORS, width=0.55)
     for i, v in enumerate(status_counts.values):
@@ -213,14 +202,14 @@ def plot_data_graphic_types():
     axes[0].set_ylabel("Number of Trades")
     _clean_axes(axes[0])
 
-    # 2. Time series data -> line chart
+
     axes[1].plot(idx['date'], idx['index_level'], color='#1E3A8A', linewidth=1.8)
     axes[1].set_title("Time Series Data Graphic\n(Line Chart: Market Index, base 1000)", fontweight='bold')
     axes[1].set_ylabel("Index Level")
     axes[1].tick_params(axis='x', rotation=45)
     _clean_axes(axes[1])
 
-    # 3. Statistical data -> box plot
+
     sns.boxplot(x='risk_label', y='return_pct', data=df, order=RISK_ORDER, ax=axes[2], color='#99F6E4')
     axes[2].axhline(0, color='#64748B', linewidth=1, linestyle='--')
     axes[2].set_title("Statistical Data Graphic\n(Box Plot: Trade Return % by Risk Profile)", fontweight='bold')
@@ -230,13 +219,9 @@ def plot_data_graphic_types():
     plt.tight_layout()
     save_chart("data_graphic_types.png", "Categorical / Time Series / Statistical Graphics")
 
-# ==============================================================================
-# UNIT 2: PRE-PROCESSING & AESTHETICS (Pairplot, Violin, Heatmap, Interactive,
-#         Graphical Perception, Grammar of Graphics, Aesthetics & Scales)
-# ==============================================================================
 
+# ---------- Unit 2 ----------
 def plot_stock_pairplot():
-    """Seaborn Pairplot across stock-level risk/return metrics coloured by sector."""
     summary = get_stock_summary()
     pair_df = summary[['return_1y', 'volatility', 'max_drawdown', 'beta', 'sector_name']].rename(columns={
         'return_1y': '1Y Return %', 'volatility': 'Volatility %', 'max_drawdown': 'Max Drawdown %',
@@ -248,7 +233,6 @@ def plot_stock_pairplot():
     save_chart("stock_pairplot.png", "Pairplot Matrix", fig=g.fig)
 
 def plot_monthly_return_heatmap():
-    """Sector x Month Heatmap of average monthly return with a diverging colormap centred on 0%."""
     matrix = get_monthly_sector_returns().reindex(SECTOR_ORDER)
 
     plt.figure(figsize=(12, 5.5))
@@ -262,7 +246,6 @@ def plot_monthly_return_heatmap():
     save_chart("return_heatmap.png", "Monthly Return Heatmap")
 
 def plot_interactive_explorer():
-    """Interactive matplotlib window: hover tooltips, sector check-boxes (slicer) and a moving-average slider."""
     sector_idx = get_sector_index()[SECTOR_ORDER]
     dates = list(sector_idx.index)
     x = np.arange(len(dates))
@@ -274,7 +257,7 @@ def plot_interactive_explorer():
         (ln,) = ax.plot(x, sector_idx[sector].values, linewidth=2, color=SECTOR_PALETTE[sector], label=sector)
         lines[sector] = ln
     ax.axhline(100, color='#94A3B8', linewidth=1, linestyle='--')
-    # One tick at the first trading day of every month
+
     ticks = [i for i in x if i == 0 or dates[i].month != dates[i - 1].month]
     ax.set_xticks(ticks)
     ax.set_xticklabels([dates[i].strftime('%b %y') for i in ticks], rotation=45)
@@ -286,7 +269,7 @@ def plot_interactive_explorer():
                         bbox=dict(boxstyle='round', fc='white', ec='#334155'), arrowprops=dict(arrowstyle='->'))
     annot.set_visible(False)
 
-    # Slicer: sector check-boxes
+
     rax = fig.add_axes([0.02, 0.35, 0.17, 0.45])
     rax.set_title("Sector filter", fontsize=9)
     check = CheckButtons(rax, list(lines), [True] * len(lines))
@@ -298,7 +281,7 @@ def plot_interactive_explorer():
         fig.canvas.draw_idle()
     check.on_clicked(on_check)
 
-    # Slider: moving-average window (1 = raw data)
+
     sax = fig.add_axes([0.30, 0.05, 0.55, 0.03])
     slider = Slider(sax, 'Moving average (days)', 1, 50, valinit=1, valstep=1)
     def on_slide(val):
@@ -307,7 +290,7 @@ def plot_interactive_explorer():
         fig.canvas.draw_idle()
     slider.on_changed(on_slide)
 
-    # Hover tooltip
+
     def on_hover(event):
         if event.inaxes == ax:
             for sector, ln in lines.items():
@@ -323,13 +306,12 @@ def plot_interactive_explorer():
             annot.set_visible(False)
             fig.canvas.draw_idle()
     fig.canvas.mpl_connect('motion_notify_event', on_hover)
-    fig._widgets = (check, slider)  # keep widget references alive while the window is open
+    fig._widgets = (check, slider)
 
     save_chart("interactive_explorer_snapshot.png", "Interactive Explorer (snapshot; live window opens in menu mode)", fig=fig,
                live_func="plot_interactive_explorer")
 
 def plot_graphical_perception():
-    """Graphical perception theory: the same numbers encoded by position, length, angle, area and colour."""
     summary = get_sector_aggregates().sort_values('total_trades', ascending=False)
     sectors = summary['sector_name'].tolist()
     vals = summary['total_trades'].values.astype(float)
@@ -376,13 +358,12 @@ def plot_graphical_perception():
     save_chart("graphical_perception.png", "Graphical Perception Ranking")
 
 def plot_grammar_of_graphics():
-    """Grammar of Graphics: building a risk-return chart layer by layer, then scales for each type of data."""
     summary = get_stock_summary()
     df = get_cleaned_trades()
 
     fig, axes = plt.subplots(2, 3, figsize=(17, 10))
 
-    # Row 1: Layering -> data + aesthetics + geometries
+
     ax = axes[0, 0]
     ax.scatter(summary['volatility'], summary['return_1y'], color='#64748B', s=30)
     ax.set_title("Layer 1: Data + aes(x, y) + geom_point", fontweight='bold')
@@ -404,7 +385,7 @@ def plot_grammar_of_graphics():
         ax.set_ylabel("Reward: 1-Year Return (%)")
         _clean_axes(ax)
 
-    # Row 2: Scales map data values onto aesthetics (one per data type)
+
     ax = axes[1, 0]
     counts = df['sector_name'].value_counts().reindex(SECTOR_ORDER)
     ax.bar(counts.index, counts.values, color=[SECTOR_PALETTE[s] for s in counts.index])
@@ -434,19 +415,16 @@ def plot_grammar_of_graphics():
     plt.tight_layout()
     save_chart("grammar_of_graphics.png", "Grammar of Graphics & Scales")
 
-# ==============================================================================
-# UNIT 3: VISUALIZATION DESIGN (Amounts; Distributions: Hist/KDE, ECDF, Q-Q, Skew)
-# ==============================================================================
 
+# ---------- Unit 3 ----------
 def plot_sector_returns_bar():
-    """Bar plot of the average 1-year return of each sector (bars start at zero, colour = up/down)."""
     summary = get_sector_aggregates().sort_values('avg_return_1y', ascending=False)
 
     fig, ax = plt.subplots(figsize=(10, 5.5))
     vals = summary['avg_return_1y']
     bars = ax.bar(summary['sector_name'], vals, color=[UP if v >= 0 else DOWN for v in vals], width=0.55)
 
-    # Value annotations on bar tips
+
     for bar, v in zip(bars, vals):
         ax.text(bar.get_x() + bar.get_width()/2, v + (1 if v >= 0 else -1), f'{v:+.1f}%',
                 ha='center', va='bottom' if v >= 0 else 'top', fontsize=9.5, fontweight='bold', color='#111827')
@@ -461,7 +439,6 @@ def plot_sector_returns_bar():
     save_chart("sector_returns_bar.png", "Sector Returns Bar Plot")
 
 def plot_most_traded_stocks():
-    """Horizontal bar plot of the 10 most traded stocks with traded value labels."""
     top = get_stock_trade_aggregates().head(10).sort_values('total_trades', ascending=True)
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -483,7 +460,6 @@ def plot_most_traded_stocks():
     save_chart("most_traded_stocks.png", "Most Traded Stocks")
 
 def plot_cleveland_dot_plot():
-    """Cleveland Dot Plot of the 1-year return of all 36 stocks (cleaner than 36 bars)."""
     summary = get_stock_summary().sort_values('return_1y')
 
     fig, ax = plt.subplots(figsize=(9, 10))
@@ -506,19 +482,18 @@ def plot_cleveland_dot_plot():
     save_chart("dot_stock_returns.png", "Cleveland Dot Plot")
 
 def plot_trade_outcome_grouped_stacked():
-    """Grouped and Stacked Bar Charts of trade outcome (Profit, Loss, Open) per sector."""
     summary = get_sector_aggregates().set_index('sector_name').reindex(SECTOR_ORDER).reset_index()
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
 
-    # 1. Grouped Bar Chart
+
     melted = summary.melt(id_vars=['sector_name'], value_vars=STATUS_ORDER, var_name='Outcome', value_name='Count')
     sns.barplot(x='sector_name', y='Count', hue='Outcome', data=melted, ax=axes[0], palette=STATUS_COLORS)
     axes[0].set_title("Grouped Bar Chart: Trade Outcome by Sector", fontweight='bold')
     axes[0].set_xlabel("Sector")
     axes[0].set_ylabel("Number of Trades")
 
-    # 2. Stacked Bar Chart
+
     summary.set_index('sector_name')[STATUS_ORDER].plot(kind='bar', stacked=True, ax=axes[1], color=STATUS_COLORS, edgecolor='white')
     axes[1].set_title("Stacked Bar Chart: Trade Outcome by Sector", fontweight='bold')
     axes[1].set_xlabel("Sector")
@@ -530,12 +505,11 @@ def plot_trade_outcome_grouped_stacked():
     save_chart("trade_outcome_breakdown.png", "Grouped & Stacked Outcome Breakdown")
 
 def plot_return_distributions():
-    """Visualizing single & multiple distributions of daily returns: Histogram + KDE, Overlaid KDEs, and Violin Plot."""
     df = get_clean_prices().dropna(subset=['daily_return'])
 
     fig, axes = plt.subplots(1, 3, figsize=(16, 5))
 
-    # 1. Single Distribution: Histogram + KDE
+
     sns.histplot(df['daily_return'], kde=True, ax=axes[0], color='#0D9488', bins=60, stat='density')
     axes[0].axvline(df['daily_return'].mean(), color='#111827', linestyle='--', label=f"Mean {df['daily_return'].mean():.2f}%")
     axes[0].set_title("Single Distribution: Daily Returns of All Stocks\n(Histogram + KDE Density)", fontweight='bold')
@@ -543,7 +517,7 @@ def plot_return_distributions():
     axes[0].set_ylabel("Density")
     axes[0].legend(fontsize=8)
 
-    # 2. Overlaid Multiple Distributions across Sectors
+
     sns.kdeplot(data=df, x='daily_return', hue='sector_name', hue_order=SECTOR_ORDER, ax=axes[1],
                 common_norm=False, palette=SECTOR_PALETTE, linewidth=1.8)
     axes[1].set_title("Multiple Distributions at the Same Time\n(Overlaid KDE Across 6 Sectors)", fontweight='bold')
@@ -551,7 +525,7 @@ def plot_return_distributions():
     axes[1].set_xlim(-8, 8)
     axes[1].set_ylabel("Density")
 
-    # 3. Violin Plot across Sectors
+
     sns.violinplot(x='sector_name', y='daily_return', hue='sector_name', data=df, order=SECTOR_ORDER, ax=axes[2],
                    palette=SECTOR_PALETTE, inner='quartile', cut=0, legend=False)
     axes[2].set_title("Violin Plot: Daily Return Spread per Sector\n(Wider violin = riskier sector)", fontweight='bold')
@@ -562,7 +536,6 @@ def plot_return_distributions():
     save_chart("return_distributions.png", "Return Distributions")
 
 def plot_statistical_diagnostics():
-    """Statistical graphics: ECDF, Normal Q-Q Plot (fat tails), and Skewed vs Log Transformation."""
     trades = get_cleaned_trades()
     prices = get_clean_prices().dropna(subset=['daily_return'])
     trade_value = trades['invested'] / 1000
@@ -571,26 +544,26 @@ def plot_statistical_diagnostics():
 
     fig, axes = plt.subplots(1, 4, figsize=(21, 5))
 
-    # 1. ECDF Plot
+
     sns.ecdfplot(trade_value, ax=axes[0], color='#7C3AED', linewidth=2.2)
     axes[0].axhline(0.5, color='#94A3B8', linestyle=':')
     axes[0].set_title("Empirical Cumulative Distribution Function\n(ECDF of Trade Size)", fontweight='bold')
     axes[0].set_xlabel("Trade Size (Rs thousand)")
     axes[0].set_ylabel("Cumulative Proportion of Trades")
 
-    # 2. Q-Q Plot
+
     stats.probplot(sample, dist="norm", plot=axes[1])
     axes[1].set_title("Normal Q-Q Plot of Daily Returns\n(ends bend away = fat tails, big crashes/jumps)", fontweight='bold')
     axes[1].get_lines()[0].set_markerfacecolor('#2563EB')
     axes[1].get_lines()[0].set_markersize(4)
     axes[1].get_lines()[1].set_color('#DC2626')
 
-    # 3. Highly skewed distribution (raw)
+
     sns.histplot(trade_value, bins=25, kde=True, ax=axes[2], color='#DC2626')
     axes[2].set_title(f"Highly Skewed Distribution\n(Raw Trade Size, skewness = {stats.skew(trade_value):.2f})", fontweight='bold')
     axes[2].set_xlabel("Trade Size (Rs thousand)")
 
-    # 4. After log transform
+
     sns.histplot(log_value, bins=25, kde=True, ax=axes[3], color='#0D9488')
     axes[3].set_title(f"After log10 Transform\n(skewness = {stats.skew(log_value):.2f})", fontweight='bold')
     axes[3].set_xlabel("log10(Trade Size in Rs thousand)")
@@ -598,17 +571,14 @@ def plot_statistical_diagnostics():
     plt.tight_layout()
     save_chart("statistical_diagnostics.png", "Statistical Diagnostics (ECDF, Q-Q, Skew & Log Transform)")
 
-# ==============================================================================
-# UNIT 4: ADVANCED DESIGN (Many Distributions, Proportions, Nested Proportions, Associations)
-# ==============================================================================
 
+# ---------- Unit 4 ----------
 def plot_vertical_vs_horizontal_layouts():
-    """Many distributions at once: monthly stock returns along the vertical axis (box + strip) vs horizontal axis (ridgeline)."""
     df = get_monthly_stock_returns()
 
     fig, axes = plt.subplots(1, 2, figsize=(15, 6))
 
-    # Vertical axis: boxplots with jittered strip chart
+
     sns.boxplot(x='sector_name', y='monthly_return', data=df, order=SECTOR_ORDER, ax=axes[0], color='white', fliersize=0)
     sns.stripplot(x='sector_name', y='monthly_return', hue='sector_name', data=df, order=SECTOR_ORDER, ax=axes[0],
                   palette=SECTOR_PALETTE, size=3.5, alpha=0.6, jitter=0.25, legend=False)
@@ -617,7 +587,7 @@ def plot_vertical_vs_horizontal_layouts():
     axes[0].set_xlabel("Sector")
     axes[0].set_ylabel("Monthly Return (%)")
 
-    # Horizontal axis: ridgeline plot (one shifted density per sector)
+
     grid = np.linspace(df['monthly_return'].min() - 3, df['monthly_return'].max() + 3, 300)
     for i, sector in enumerate(reversed(SECTOR_ORDER)):
         kde = stats.gaussian_kde(df[df['sector_name'] == sector]['monthly_return'])
@@ -635,7 +605,6 @@ def plot_vertical_vs_horizontal_layouts():
     save_chart("vertical_vs_horizontal.png", "Vertical vs Horizontal Distributions")
 
 def plot_proportions():
-    """A case for pie charts: sector share of traded value as pie, side-by-side bars, stacked bar, and stacked densities."""
     summary = get_sector_aggregates().sort_values('traded_value', ascending=False)
     df = get_cleaned_trades()
     sectors = summary['sector_name'].tolist()
@@ -644,12 +613,12 @@ def plot_proportions():
 
     fig, axes = plt.subplots(1, 4, figsize=(22, 5.2))
 
-    # 1. Pie chart
+
     axes[0].pie(shares, labels=sectors, autopct='%1.1f%%', startangle=90,
                 counterclock=False, colors=colors, wedgeprops=dict(edgecolor='white'), textprops={'fontsize': 9})
     axes[0].set_title("Pie Chart\n(Share of Traded Value)", fontweight='bold')
 
-    # 2. Side-by-side bars
+
     axes[1].bar(sectors, shares, color=colors)
     for i, v in enumerate(shares):
         axes[1].text(i, v + 0.3, f"{v:.1f}%", ha='center', fontsize=9)
@@ -657,7 +626,7 @@ def plot_proportions():
     axes[1].set_ylabel("Share of Traded Value (%)")
     _clean_axes(axes[1])
 
-    # 3. Single stacked bar
+
     left = 0
     for s, v, c in zip(sectors, shares, colors):
         axes[2].barh(0, v, left=left, color=c, edgecolor='white')
@@ -668,7 +637,7 @@ def plot_proportions():
     axes[2].set_xlabel("Cumulative Share (%)")
     axes[2].set_title("Stacked Bar\n(Parts Adding up to 100%)", fontweight='bold')
 
-    # 4. Stacked densities: how the sector mix changes with holding period
+
     sns.kdeplot(data=df, x='holding_days', hue='sector_name', hue_order=SECTOR_ORDER, multiple='fill', palette=SECTOR_PALETTE,
                 ax=axes[3], linewidth=0.5, clip=(1, df['holding_days'].max()))
     axes[3].set_title("Stacked Densities\n(Sector Mix vs Holding Period)", fontweight='bold')
@@ -680,7 +649,6 @@ def plot_proportions():
     save_chart("proportions.png", "Proportions (Pie, Side-by-Side, Stacked, Stacked Densities)")
 
 def plot_parts_of_total():
-    """Visualizing proportions separately as parts of the total (each sector's trades against all trades)."""
     df = get_cleaned_trades()
     lo, hi = np.floor(df['return_pct'].quantile(0.01)), np.ceil(df['return_pct'].quantile(0.99))
     bins = np.arange(lo, hi + 5, 5)
@@ -704,12 +672,11 @@ def plot_parts_of_total():
     save_chart("parts_of_total.png", "Parts of the Total (Small Multiples)")
 
 def plot_nested_proportions():
-    """Nested proportions: treemap (Sector -> Stock) and nested donut (Sector -> Trade Outcome)."""
     df = get_cleaned_trades()
 
     fig, axes = plt.subplots(1, 2, figsize=(17, 7))
 
-    # 1. Treemap: sectors as blocks, stocks nested inside (area = traded value)
+
     tree = (df.groupby(['sector_name', 'symbol'])['invested'].sum().reset_index()
               .assign(order=lambda t: t['sector_name'].map(SECTOR_ORDER.index))
               .sort_values(['order', 'invested'], ascending=[True, False]))
@@ -721,7 +688,7 @@ def plot_nested_proportions():
     axes[0].set_title("Treemap: Sector -> Stock\n(Area = Traded Value, Colour = Sector)", fontweight='bold')
     axes[0].axis('off')
 
-    # 2. Nested donut: inner ring = sector, outer ring = outcome inside each sector
+
     nested = df.groupby(['sector_name', 'simple_status']).size().unstack(fill_value=0)
     nested = nested.reindex(columns=STATUS_ORDER, fill_value=0).reindex(SECTOR_ORDER).fillna(0)
     axes[1].pie(nested.sum(axis=1), radius=0.7, labels=nested.index, labeldistance=0.55,
@@ -737,13 +704,12 @@ def plot_nested_proportions():
     save_chart("nested_proportions.png", "Nested Proportions (Treemap & Nested Donut)")
 
 def plot_associations_and_pca():
-    """Associations among quantitative variables: risk-return scatter, sector correlogram and PCA of stock returns."""
     summary = get_stock_summary()
     sector_returns = get_clean_prices().groupby(['date', 'sector_name'])['daily_return'].mean().unstack()[SECTOR_ORDER]
 
     fig = plt.figure(figsize=(18, 5.4))
 
-    # 1. Scatter plot of two quantitative variables
+
     ax1 = fig.add_subplot(1, 3, 1)
     sns.scatterplot(x='beta', y='return_1y', hue='sector_name', hue_order=SECTOR_ORDER, data=summary, s=60, ax=ax1, palette=SECTOR_PALETTE)
     r, _ = stats.pearsonr(summary['beta'], summary['return_1y'])
@@ -753,14 +719,14 @@ def plot_associations_and_pca():
     ax1.set_ylabel("1-Year Return (%)")
     ax1.legend(fontsize=7)
 
-    # 2. Correlogram (Correlation Heatmap)
+
     ax2 = fig.add_subplot(1, 3, 2)
     sns.heatmap(sector_returns.corr(), annot=True, fmt='.2f', cmap='coolwarm', vmin=-1, vmax=1, square=True, ax=ax2, cbar_kws={'shrink': 0.8})
     ax2.set_xlabel("")
     ax2.set_ylabel("")
     ax2.set_title("Correlogram: Daily Returns of 6 Sectors\n(do sectors move together? diversification check)", fontweight='bold', fontsize=10.5)
 
-    # 3. PCA Dimension Reduction: 250 daily returns per stock -> 2 numbers per stock
+
     ax3 = fig.add_subplot(1, 3, 3)
     matrix, sectors = get_stock_return_matrix()
     pca = PCA(n_components=2, random_state=42)
@@ -780,7 +746,6 @@ def plot_associations_and_pca():
     save_chart("associations_and_pca.png", "Associations & PCA")
 
 def plot_paired_slope_chart():
-    """Paired data: each sector's return in the first vs second half of the year (slope chart)."""
     sector_idx = get_sector_index()[SECTOR_ORDER]
     mid = len(sector_idx) // 2
     first = (sector_idx.iloc[mid] / sector_idx.iloc[0] - 1) * 100
@@ -802,12 +767,9 @@ def plot_paired_slope_chart():
     plt.tight_layout()
     save_chart("paired_slope_chart.png", "Paired Slope Chart")
 
-# ==============================================================================
-# UNIT 5: TIME SERIES, TRENDS & GEOSPATIAL (Projections, Layers, Choropleth, Cartogram)
-# ==============================================================================
 
+# ---------- Unit 5 ----------
 def plot_time_series_and_trends():
-    """Individual & multiple time series, smoothing (moving averages, LOESS) and defined functional forms."""
     idx = get_market_index()
     sector_idx = get_sector_index()[SECTOR_ORDER]
     x = np.arange(len(idx))
@@ -816,13 +778,13 @@ def plot_time_series_and_trends():
 
     fig, axes = plt.subplots(2, 2, figsize=(16, 10))
 
-    # 1. Individual time series
+
     axes[0, 0].plot(dates, y, color='#1E3A8A', linewidth=1.6)
     axes[0, 0].fill_between(dates, y, y.min() * 0.98, color='#1E3A8A', alpha=0.08)
     axes[0, 0].set_title(f"Individual Time Series: Market Index ({(y[-1] / y[0] - 1) * 100:+.1f}% in one year)", fontweight='bold')
     axes[0, 0].set_ylabel("Index Level (base 1000)")
 
-    # 2. Multiple time series
+
     for sector in SECTOR_ORDER:
         axes[0, 1].plot(sector_idx.index, sector_idx[sector], color=SECTOR_PALETTE[sector], linewidth=1.5, label=sector)
     axes[0, 1].axhline(100, color='#94A3B8', linewidth=1, linestyle='--')
@@ -830,7 +792,7 @@ def plot_time_series_and_trends():
     axes[0, 1].set_ylabel("Sector Index")
     axes[0, 1].legend(fontsize=8, ncol=2)
 
-    # 3. Smoothing: moving averages and LOESS
+
     loess = sm.nonparametric.lowess(y, x, frac=0.25)
     axes[1, 0].plot(dates, y, label='Actual Index', alpha=0.45, color='gray')
     axes[1, 0].plot(dates, idx['ma_20'], label='20-Day Moving Average', color='#DC2626', linewidth=2)
@@ -840,7 +802,7 @@ def plot_time_series_and_trends():
     axes[1, 0].set_ylabel("Index Level")
     axes[1, 0].legend(fontsize=8.5)
 
-    # 4. Trend with a defined functional form (linear & exponential least squares)
+
     axes[1, 1].plot(dates, y, label='Actual Index', alpha=0.45, color='gray')
     lin = np.polyval(np.polyfit(x, y, 1), x)
     b, a = np.polyfit(x, np.log(y), 1)
@@ -859,7 +821,6 @@ def plot_time_series_and_trends():
     save_chart("time_series_and_trends.png", "Time Series & Trends")
 
 def plot_advanced_time_series():
-    """Dose-response curve, two or more response variables, detrending and time-series decomposition."""
     idx = get_market_index()
     trades = get_cleaned_trades()
     sold = trades[trades['sell_date_dt'].notnull()]
@@ -868,7 +829,7 @@ def plot_advanced_time_series():
 
     fig, axes = plt.subplots(2, 2, figsize=(16, 10))
 
-    # 1. Dose-Response Curve (holding period -> trade return)
+
     sns.regplot(x='holding_days', y='return_pct', data=sold, order=2, ax=axes[0, 0],
                 scatter_kws={'alpha': 0.55, 'color': '#D97706', 's': 22}, line_kws={'color': '#1E3A8A', 'linewidth': 2})
     axes[0, 0].axhline(0, color='#94A3B8', linewidth=1, linestyle='--')
@@ -876,7 +837,7 @@ def plot_advanced_time_series():
     axes[0, 0].set_xlabel("Holding Days")
     axes[0, 0].set_ylabel("Return per Sold Trade (%)")
 
-    # 2. Two or more response variables over time (dual axis)
+
     ax2 = axes[0, 1]
     ax2.plot(idx['date'], idx['index_level'], color='#2563EB', linewidth=1.6, label='Market Index')
     ax2.set_ylabel("Index Level", color='#2563EB')
@@ -890,7 +851,7 @@ def plot_advanced_time_series():
     ax2.legend(h1 + h2, l1 + l2, fontsize=8.5, loc='upper left')
     ax2.set_title("Time Series of Two Response Variables\n(Index Level & Volatility - fear rises when prices fall)", fontweight='bold')
 
-    # 3. Detrending: subtract the fitted linear trend
+
     trend = np.polyval(np.polyfit(x, y, 1), x)
     detrended = y - trend
     axes[1, 0].fill_between(idx['date'], detrended, 0, where=detrended >= 0, color=UP, alpha=0.6, label='Above trend')
@@ -901,7 +862,7 @@ def plot_advanced_time_series():
     axes[1, 0].tick_params(axis='x', rotation=30)
     axes[1, 0].legend(fontsize=8)
 
-    # 4. Seasonal Decomposition (Trend, Seasonal, Residual)
+
     ts_decomp = idx.set_index('date')['index_level']
     res = seasonal_decompose(ts_decomp, model='additive', period=21)
     axes[1, 1].plot(ts_decomp.index, ts_decomp.values - ts_decomp.mean(), color='gray', alpha=0.45, label='Observed (centred)')
@@ -916,7 +877,6 @@ def plot_advanced_time_series():
     save_chart("advanced_time_series.png", "Dose-Response, Multi-Response, Detrending & Decomposition")
 
 def _project(lon, lat, kind, lon0=80.0, lat0=22.0):
-    """Converts longitude/latitude (degrees) into x/y for a map projection."""
     lam, phi = np.radians(lon), np.radians(lat)
     if kind == 'mercator':
         return np.degrees(lam), np.degrees(np.log(np.tan(np.pi / 4 + phi / 2)))
@@ -925,10 +885,9 @@ def _project(lon, lat, kind, lon0=80.0, lat0=22.0):
         x = np.cos(phi) * np.sin(lam - lam0)
         y = np.cos(phi0) * np.sin(phi) - np.sin(phi0) * np.cos(phi) * np.cos(lam - lam0)
         return x, y
-    return np.asarray(lon, dtype=float), np.asarray(lat, dtype=float)   # equirectangular (plate carree)
+    return np.asarray(lon, dtype=float), np.asarray(lat, dtype=float)
 
 def plot_map_projections():
-    """Geospatial projections: the same investor-location points drawn in three projections."""
     geo = get_state_geospatial_summary()
     geo = geo[geo['home_state'].isin(STATE_COORDS)]
     lats = geo['home_state'].map(lambda s: STATE_COORDS[s][0]).values
@@ -939,10 +898,10 @@ def plot_map_projections():
               'mercator': "Mercator\nlatitude gaps stretch towards the poles",
               'orthographic': "Orthographic (globe view centred on India)\nshape of a 3D globe"}
     for ax, kind in zip(axes, titles):
-        for lon in range(60, 101, 10):    # meridians
+        for lon in range(60, 101, 10):
             gx, gy = _project(np.full(50, lon), np.linspace(0, 60, 50), kind)
             ax.plot(gx, gy, color='#CBD5E1', linewidth=0.8)
-        for lat in range(0, 61, 10):      # parallels
+        for lat in range(0, 61, 10):
             gx, gy = _project(np.linspace(60, 100, 50), np.full(50, lat), kind)
             ax.plot(gx, gy, color='#CBD5E1', linewidth=0.8)
             ax.text(gx[0], gy[0], f"{lat}°N", fontsize=7, color='#94A3B8', ha='right')
@@ -959,14 +918,13 @@ def plot_map_projections():
     save_chart("map_projections.png", "Map Projections")
 
 def plot_map_layers():
-    """Geospatial layers: base graticule -> investor data layer -> exchange & order-flow layer."""
     geo = get_state_geospatial_summary()
     geo = geo[geo['home_state'].isin(STATE_COORDS)]
     ex_name, ex_lat, ex_lon = EXCHANGE_LOCATION
 
     fig, axes = plt.subplots(1, 3, figsize=(18, 6.5), sharex=True, sharey=True)
     for i, ax in enumerate(axes):
-        # Layer 1: base layer (lat/lon grid + state labels)
+
         for s, (lat, lon) in STATE_COORDS.items():
             ax.text(lon, lat - 0.9, s, fontsize=7.5, ha='center', color='#475569')
         ax.set_xlim(66, 92)
@@ -974,12 +932,12 @@ def plot_map_layers():
         ax.set_xlabel("Longitude (°E)")
         ax.set_ylabel("Latitude (°N)")
         if i >= 1:
-            # Layer 2: data layer (investors per home state)
+
             for _, r in geo.iterrows():
                 lat, lon = STATE_COORDS[r['home_state']]
                 ax.scatter(lon, lat, s=r['investor_count'] * 30, color='#3B82F6', alpha=0.55, edgecolors='#1E40AF', zorder=3)
         if i == 2:
-            # Layer 3: annotation layer (stock exchange + order flow from each state)
+
             for _, r in geo.iterrows():
                 lat, lon = STATE_COORDS[r['home_state']]
                 ax.plot([lon, ex_lon], [lat, ex_lat], color='#DC2626', linewidth=0.5 + r['traded_value_lakh'] / 15, alpha=0.6, zorder=2)
@@ -992,7 +950,6 @@ def plot_map_layers():
     save_chart("map_layers.png", "Map Layers")
 
 def _draw_state_tiles(ax, values, cmap, label, fmt="{:.0f}", sizes=None):
-    """Draws the tile-grid map; colour from `values`, optional tile size scaling for cartograms."""
     norm = Normalize(vmin=min(values.values()), vmax=max(values.values()))
     cm = plt.get_cmap(cmap)
     for state, (col, row) in STATE_TILES.items():
@@ -1010,7 +967,6 @@ def _draw_state_tiles(ax, values, cmap, label, fmt="{:.0f}", sizes=None):
         plt.colorbar(sm_, ax=ax, shrink=0.7, label=label)
 
 def plot_choropleth_map():
-    """Choropleth (tile-grid) of Indian home states: raw investor counts vs normalised traded value per investor."""
     geo = get_state_geospatial_summary().set_index('home_state')
     investors = geo['investor_count'].to_dict()
     per_investor = (geo['traded_value_lakh'] / geo['investor_count'].replace(0, np.nan)).fillna(0).to_dict()
@@ -1025,7 +981,6 @@ def plot_choropleth_map():
     save_chart("choropleth_map.png", "Choropleth Map")
 
 def plot_proportional_cartogram():
-    """Cartograms: proportional symbol map on lat/lon and a tile cartogram where tile size = traded value."""
     geo = get_state_geospatial_summary()
     geo = geo[geo['home_state'].isin(STATE_COORDS)]
 
@@ -1046,9 +1001,6 @@ def plot_proportional_cartogram():
     plt.tight_layout()
     save_chart("cartogram.png", "Cartograms")
 
-# ==============================================================================
-# DASHBOARD HELPERS (KPI card + gauge, shared by both dashboards)
-# ==============================================================================
 
 def _kpi_card(ax, title, value, color, note=""):
     ax.add_patch(FancyBboxPatch((0.03, 0.06), 0.94, 0.88, boxstyle='round,pad=0.02', fc='#F8FAFC', ec=color, linewidth=2))
@@ -1059,7 +1011,6 @@ def _kpi_card(ax, title, value, color, note=""):
     ax.axis('off')
 
 def _gauge(ax, pct, target, caption):
-    """Semi-circular gauge (0-100%) with a target marker."""
     for start, end, c in [(0, 60, '#FCA5A5'), (60, 85, '#FDE68A'), (85, 100, '#A7F3D0')]:
         ax.add_patch(Wedge((0, 0), 1, 180 - end * 1.8, 180 - start * 1.8, width=0.3, color=c))
     ang = np.radians(180 - pct * 1.8)
@@ -1073,12 +1024,9 @@ def _gauge(ax, pct, target, caption):
     ax.set_aspect('equal')
     ax.axis('off')
 
-# ==============================================================================
-# KPI DASHBOARD IMAGE (main menu option 14) - Power BI style market page
-# ==============================================================================
 
+# ---------- Power BI style dashboard ----------
 def plot_market_dashboard(sector=None, risk=None):
-    """Market & portfolio dashboard: cards, breadth gauge, top movers, sector drill-down, monthly KPI, P&L by investor type."""
     k = get_market_kpis(sector, risk)
     mood, mood_text = market_mood(k['breadth_pct'])
     gainers, losers = get_top_movers(5, sector)
@@ -1092,7 +1040,7 @@ def plot_market_dashboard(sector=None, risk=None):
     fig = plt.figure(figsize=(18, 13))
     gs = fig.add_gridspec(3, 5, height_ratios=[0.85, 1.9, 1.5], hspace=0.5, wspace=0.55)
 
-    # Row 1: cards + gauge
+
     _kpi_card(fig.add_subplot(gs[0, 0]), "Value of Shares Held", format_inr(k['open_value']), '#1E3A8A',
               f"invested {format_inr(k['open_invested'])}")
     pnl_color = lambda v: UP if v >= 0 else DOWN
@@ -1104,7 +1052,7 @@ def plot_market_dashboard(sector=None, risk=None):
               f"target 55% | {k['stop_loss_hits']} stop-loss alerts")
     _gauge(fig.add_subplot(gs[0, 4]), k['breadth_pct'], 60, f"Stocks in uptrend - mood {mood}")
 
-    # Row 2 left: top movers today
+
     ax_mv = fig.add_subplot(gs[1, :2])
     movers = pd.concat([gainers, losers.iloc[::-1]]).drop_duplicates('symbol').sort_values('change_1d')
     bars = ax_mv.barh(movers['symbol'], movers['change_1d'], color=[UP if v >= 0 else DOWN for v in movers['change_1d']])
@@ -1118,7 +1066,7 @@ def plot_market_dashboard(sector=None, risk=None):
     ax_mv.set_title("Top 5 Gainers & Losers Today", fontweight='bold')
     _clean_axes(ax_mv)
 
-    # Row 2 right: drill-down (sector level, or the stocks inside the chosen sector)
+
     ax_dd = fig.add_subplot(gs[1, 2:])
     if sector:
         level = stocks[stocks['sector_name'] == sector].set_index('symbol')['return_1y'].sort_values()
@@ -1137,7 +1085,7 @@ def plot_market_dashboard(sector=None, risk=None):
     ax_dd.set_xlabel("1-Year Return (%)")
     _clean_axes(ax_dd)
 
-    # Row 3 left: KPI trend - trades per month, this month vs last month highlighted
+
     ax_kp = fig.add_subplot(gs[2, :3])
     monthly = trades.groupby('buy_month').size()
     colors = ['#CBD5E1'] * len(monthly)
@@ -1153,7 +1101,7 @@ def plot_market_dashboard(sector=None, risk=None):
     _month_ticks(ax_kp)
     _clean_axes(ax_kp)
 
-    # Row 3 right: profit by investor type
+
     ax_rk = fig.add_subplot(gs[2, 3:])
     sold = trades['sell_date_dt'].notnull()
     by_risk = pd.DataFrame({
@@ -1174,12 +1122,8 @@ def plot_market_dashboard(sector=None, risk=None):
     suffix = f"{(sector or 'all').lower()}_{RISK_PROFILES.get(risk, 'all').lower()}"
     return save_chart(f"market_dashboard_{suffix}.png", f"Market Dashboard ({label})", fig=fig)
 
-# ==============================================================================
-# SELF-STUDY CASE STUDY: SUPPLY CHAIN & LOGISTICS DASHBOARD
-# The stock market's own supply chain = SHARE DELIVERY (T+1 settlement):
-# route mapping, delivery status KPIs, filtering by region
-# ==============================================================================
 
+# ---------- Case study: supply chain ----------
 PIPELINE_STEPS = [
     ("1. Investor", "places a BUY order\nin the broker app"),
     ("2. Broker", "Zerodha, Groww,\nUpstox ... sends order"),
@@ -1191,7 +1135,6 @@ PIPELINE_STEPS = [
 REGION_COLORS = {'North': '#2563EB', 'West': '#EA580C', 'South': '#0D9488', 'East': '#7C3AED', 'Other': '#64748B'}
 
 def _draw_pipeline(ax, deliv):
-    """Horizontal flow diagram: how bought shares travel from the investor's order to the demat account."""
     n = len(PIPELINE_STEPS)
     for i, (head, body) in enumerate(PIPELINE_STEPS):
         x = i / n + 0.008
@@ -1215,7 +1158,6 @@ def _draw_pipeline(ax, deliv):
     ax.axis('off')
 
 def plot_supply_chain_dashboard(region=None):
-    """Share Delivery Tracker: settlement pipeline, KPI cards, gauge, order-route map, status by region, broker & delay analysis."""
     deliv = get_cleaned_deliveries(region)
     if deliv.empty:
         print(" [!] No orders for this filter.")
@@ -1228,10 +1170,10 @@ def plot_supply_chain_dashboard(region=None):
     fig = plt.figure(figsize=(18, 16))
     gs = fig.add_gridspec(4, 5, height_ratios=[0.75, 0.8, 2.0, 1.5], hspace=0.38, wspace=0.6)
 
-    # Row 1: the settlement chain (what "delivery" means in the stock market)
+
     _draw_pipeline(fig.add_subplot(gs[0, :]), deliv)
 
-    # Row 2: KPI cards + gauge
+
     _kpi_card(fig.add_subplot(gs[1, 0]), "Buy Orders", f"{len(deliv)}", '#1E3A8A', format_inr(deliv['order_value'].sum()))
     _kpi_card(fig.add_subplot(gs[1, 1]), "Shares Delivered", f"{int(done['quantity'].sum()):,}", '#0D9488', "credited to demat")
     _kpi_card(fig.add_subplot(gs[1, 2]), "Avg Days to Demat", f"T+{done['settle_days'].mean():.2f}", '#D97706', "ideal = T+1")
@@ -1239,7 +1181,7 @@ def plot_supply_chain_dashboard(region=None):
               f"{deliv['status'].str.startswith('Pending').sum()} still pending")
     _gauge(fig.add_subplot(gs[1, 4]), on_time_pct, 95, "Delivered on T+1")
 
-    # Row 3 left: route map (investor city -> NSE Mumbai)
+
     ax_map = fig.add_subplot(gs[2, :3])
     ex_name, ex_lat, ex_lon = EXCHANGE
     routes = deliv.groupby(['from_city', 'region']).agg(
@@ -1274,7 +1216,7 @@ def plot_supply_chain_dashboard(region=None):
     ax_map.set_ylabel("Latitude (°N)")
     ax_map.set_title("Route Map: Orders from Investor Cities -> NSE Mumbai\n(arrow width = orders, colour = on-time %: red low, green high)", fontweight='bold')
 
-    # Row 3 right: delivery status by region (stacked bars)
+
     ax_reg = fig.add_subplot(gs[2, 3:])
     by_region = deliv.groupby(['region', 'status']).size().unstack(fill_value=0).reindex(columns=status_order, fill_value=0)
     by_region = by_region.loc[by_region.sum(axis=1).sort_values().index]
@@ -1290,10 +1232,10 @@ def plot_supply_chain_dashboard(region=None):
     ax_reg.legend(fontsize=8, loc='lower right')
     _clean_axes(ax_reg)
 
-    # Row 4 has its own grid so long labels get room
+
     row4 = gs[3, :].subgridspec(1, 3, wspace=0.6, width_ratios=[1.2, 1, 1.1])
 
-    # Row 4 left: monthly on-time % trend
+
     ax_tr = fig.add_subplot(row4[0])
     monthly = done.groupby('order_month')['status'].apply(lambda s: (s == 'Delivered On-Time (T+1)').mean() * 100)
     ax_tr.plot(monthly.index, monthly.values, marker='o', color='#0D9488', linewidth=2)
@@ -1305,7 +1247,7 @@ def plot_supply_chain_dashboard(region=None):
     ax_tr.set_title("Monthly On-Time (T+1) Delivery %", fontweight='bold')
     _clean_axes(ax_tr)
 
-    # Row 4 middle: broker report card
+
     ax_br = fig.add_subplot(row4[1])
     score = get_broker_scorecard(region).sort_values('on_time_pct')
     grade_colors = {'A': '#16A34A', 'B': '#F59E0B', 'C': '#DC2626'}
@@ -1319,7 +1261,7 @@ def plot_supply_chain_dashboard(region=None):
     ax_br.set_title("Broker Report Card", fontweight='bold')
     _clean_axes(ax_br)
 
-    # Row 4 right: why deliveries were late
+
     ax_rs = fig.add_subplot(row4[2])
     reasons = deliv[deliv['delay_reason'] != '-']['delay_reason'].value_counts().sort_values()
     if len(reasons):
@@ -1335,12 +1277,8 @@ def plot_supply_chain_dashboard(region=None):
     suffix = (region or 'all').lower()
     return save_chart(f"supply_chain_dashboard_{suffix}.png", f"Share Delivery Dashboard ({region or 'All Regions'})", fig=fig)
 
-# ==============================================================================
-# SINGLE STOCK ANALYSIS CHART (used by main menu option 4: Search & Analyse)
-# ==============================================================================
 
 def plot_stock_analysis(stock_id, days=120):
-    """Candlestick chart with 20/50-day moving averages, volume bars and RSI for one stock."""
     report, g = analyse_stock(stock_id)
     if report is None:
         print(" [!] No price history for this stock.")
@@ -1352,7 +1290,7 @@ def plot_stock_analysis(stock_id, days=120):
 
     fig, (ax_p, ax_v, ax_r) = plt.subplots(3, 1, figsize=(14, 9), sharex=True,
                                            gridspec_kw={'height_ratios': [3, 1, 1]})
-    # Candles: thin line = high-low range, thick bar = open-close body
+
     ax_p.vlines(x, g['low'], g['high'], color=colors, linewidth=1)
     ax_p.bar(x, (g['close'] - g['open']).abs().clip(lower=g['close'] * 0.0008), bottom=np.minimum(g['open'], g['close']),
              color=colors, width=0.7)
@@ -1383,9 +1321,6 @@ def plot_stock_analysis(stock_id, days=120):
     safe = report['symbol'].replace('&', 'and').replace('-', '_')
     return save_chart(f"stock_analysis_{safe}.png", f"Stock Analysis ({report['symbol']})", fig=fig)
 
-# ==============================================================================
-# CHART REGISTRY (used by the terminal menu and `python main.py --all / --chart N`)
-# ==============================================================================
 
 CHART_MENU = [
     ("Unit 1", "Design Principles: Poor 3D Chart vs Clean Bar Chart", plot_design_principles_demo),
@@ -1417,7 +1352,6 @@ CHART_MENU = [
 ]
 
 def generate_all_visualizations():
-    """Batch generator that saves every chart to charts/ without opening windows."""
     print("\n--- Generating Complete Visual Analytics Suite ---")
     previous = SHOW_WINDOWS
     set_show_windows(False)

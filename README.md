@@ -133,7 +133,7 @@ Notes for Windows:
 - Using **Command Prompt (cmd)** instead of PowerShell? Activate with `.venv\Scripts\activate.bat`.
 - `py` not found? Use `python` instead of `py`.
 - Charts open in the **Photos** app (or your default image viewer).
-- If symbols like ✓ ▲ █ show as `?` or you get a `UnicodeEncodeError`, run this once in the window before starting: `$env:PYTHONUTF8=1` (PowerShell) or `set PYTHONUTF8=1` (cmd).
+- If symbols like ▲ █ show as `?` or you get a `UnicodeEncodeError`, run this once in the window before starting: `$env:PYTHONUTF8=1` (PowerShell) or `set PYTHONUTF8=1` (cmd).
 
 ---
 
@@ -269,9 +269,9 @@ POWERBI_GUIDE.md           # Building the dashboard in Power BI Desktop
 ```
 
 More detail:
-- 👉 [`PROJECT_GUIDE.md`](PROJECT_GUIDE.md): the whole project explained in Hinglish, including viva questions
-- 👉 [`MENU_OPTIONS_EXPLAINED.txt`](MENU_OPTIONS_EXPLAINED.txt): every menu option and the function behind it
-- 👉 [`POWERBI_GUIDE.md`](POWERBI_GUIDE.md): Power BI steps
+- [`PROJECT_GUIDE.md`](PROJECT_GUIDE.md): the whole project explained in Hinglish, including viva questions
+- [`MENU_OPTIONS_EXPLAINED.txt`](MENU_OPTIONS_EXPLAINED.txt): every menu option and the function behind it
+- [`POWERBI_GUIDE.md`](POWERBI_GUIDE.md): Power BI steps
 
 ---
 

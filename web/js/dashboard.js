@@ -1,4 +1,3 @@
-/* Market Dashboard (Option 14): slicers, KPI cards, gauge, movers, drill-down, monthly orders, profit by type, watchlist. */
 ML.topbar('dashboard.html');
 ML.footer();
 
@@ -48,7 +47,6 @@ function render() {
   $('g-note').textContent = rising + ' of ' + k.stocks + ' stocks trade above their 50-day average, so the mood is ' + mood.toLowerCase() + '.';
 
   const pool = d.stocks.filter((s) => !state.sector || s.sec === state.sector).sort((a, b) => b.d1 - a.d1);
-  // a stock is a gainer or a loser, never both (a 6-stock sector would otherwise show the same names twice)
   const g5 = pool.filter((s) => s.d1 >= 0).slice(0, 5), l5 = pool.filter((s) => s.d1 < 0).slice(-5).reverse();
   const mAbs = Math.max(0.01, ...g5.concat(l5).map((s) => Math.abs(s.d1)));
   const mv = (s, side) => '<a href="stock.html?s=' + encodeURIComponent(s.sym) + '" style="display:grid;grid-template-columns:90px minmax(0,1fr) 62px;gap:8px;align-items:center;color:#0E1324"><span style="font-size:12.5px;font-weight:700">' + esc(s.sym) + '</span>' +
